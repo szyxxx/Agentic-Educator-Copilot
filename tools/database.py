@@ -243,6 +243,11 @@ def save_course(course_data: dict) -> str:
     return course_id
 
 
+def _safe_str(val):
+    if isinstance(val, list):
+        return ", ".join(map(str, val))
+    return str(val) if val is not None else ""
+
 def save_rps_week(course_id: str, week_data: dict):
     """Save a single RPS week."""
     conn = get_connection()
@@ -256,17 +261,17 @@ def save_rps_week(course_id: str, week_data: dict):
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             week_id, course_id, week_data.get("week"),
-            week_data.get("type", "materi"),
-            week_data.get("title"), week_data.get("description"),
+            _safe_str(week_data.get("type", "materi")),
+            _safe_str(week_data.get("title")), _safe_str(week_data.get("description")),
             json.dumps(week_data.get("sub_cpmk", "")),
             json.dumps(week_data.get("learning_indicators", [])),
-            week_data.get("teaching_method"),
-            week_data.get("teaching_form"),
+            _safe_str(week_data.get("teaching_method")),
+            _safe_str(week_data.get("teaching_form")),
             json.dumps(week_data.get("topics_covered", [])),
             week_data.get("time_tm"),
             week_data.get("time_pt"),
             week_data.get("time_bm"),
-            week_data.get("student_activity"),
+            _safe_str(week_data.get("student_activity")),
             json.dumps(week_data.get("assessment_indicators", "")),
             week_data.get("assessment_weight"),
             json.dumps(week_data.get("references", [])),

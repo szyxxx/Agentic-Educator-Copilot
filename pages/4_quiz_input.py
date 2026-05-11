@@ -24,18 +24,80 @@ quiz_type = st.selectbox("Tipe Kuis", ["Pilihan Ganda", "Esai", "Campuran"])
 st.divider()
 
 # Answer key input
-st.subheader("🔑 Kunci Jawaban")
-num_questions = st.number_input("Jumlah Soal", min_value=1, max_value=50, value=10)
+st.subheader("🔑 Kunci Jawaban & Soal")
+
+key_method = st.radio("Metode Input Kunci Jawaban", ["Input Manual", "Generate dengan AI (dari Materi)", "Upload CSV Soal"], horizontal=True)
 
 answer_key = {}
 q_mapping = {}
-cols = st.columns(5)
-for i in range(num_questions):
-    with cols[i % 5]:
-        answer_key[f"q{i+1}"] = st.text_input(f"Soal {i+1}", key=f"ans_{i+1}", max_chars=5)
-        q_mapping[f"q{i+1}"] = {"topic": "", "sub_cpmk": ""}
+
+if key_method == "Input Manual":
+    num_questions = st.number_input("Jumlah Soal", min_value=1, max_value=50, value=10)
+    cols = st.columns(5)
+    for i in range(num_questions):
+        with cols[i % 5]:
+            answer_key[f"q{i+1}"] = st.text_input(f"Soal {i+1}", key=f"ans_{i+1}", max_chars=5)
+            q_mapping[f"q{i+1}"] = {"topic": "", "sub_cpmk": ""}
+
+elif key_method == "Generate dengan AI (dari Materi)":
+    num_questions = st.number_input("Jumlah Soal yang Digenerate", min_value=1, max_value=50, value=5)
+    
+    generate_btn = st.button("✨ Generate Soal", type="primary")
+    if generate_btn:
+        with st.spinner("Membaca materi dan membuat soal..."):
+            conn = get_connection()
+            row = conn.execute("SELECT extracted_text FROM materials WHERE course_id = ? AND week_number = ?", (course_id, week_num)).fetchone()
+            conn.close()
+            
+            if row and row["extracted_text"]:
+                from tools.quiz_generator import generate_quiz_from_material
+                generated = generate_quiz_from_material(row["extracted_text"], num_questions, quiz_type)
+                if generated:
+                    # Persist generated quiz to session state so it doesn't vanish on re-render
+                    st.session_state[f"generated_quiz_{course_id}_{week_num}"] = generated
+                    st.success("Berhasil generate soal!")
+                else:
+                    st.error("Gagal men-generate soal dari AI.")
+            else:
+                st.error("Belum ada materi yang diupload untuk minggu ini. Silakan upload materi di halaman 3 terlebih dahulu.")
+                
+    state_key = f"generated_quiz_{course_id}_{week_num}"
+    if state_key in st.session_state:
+        st.write("Edit soal dan kunci jawaban di bawah ini. Anda dapat mengubah isi, menambah baris, atau menghapus baris.")
+        df_quiz = pd.DataFrame(st.session_state[state_key])
+        
+        edited_df = st.data_editor(df_quiz, use_container_width=True, num_rows="dynamic", key=f"editor_{state_key}")
+        
+        # Parse into answer_key and q_mapping
+        for idx, row in edited_df.iterrows():
+            q_id = f"q{idx+1}"
+            answer_key[q_id] = str(row.get("correct_answer", ""))
+            q_mapping[q_id] = {"topic": str(row.get("topic", "")), "sub_cpmk": ""}
+            
+        csv = edited_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Download Soal (CSV)",
+            data=csv,
+            file_name=f'soal_kuis_{course_id}_w{week_num}.csv',
+            mime='text/csv',
+        )
+
+elif key_method == "Upload CSV Soal":
+    csv_soal = st.file_uploader("Upload CSV Soal & Kunci Jawaban", type=["csv"])
+    if csv_soal:
+        df_soal = pd.read_csv(csv_soal)
+        st.dataframe(df_soal, use_container_width=True)
+        for idx, row in df_soal.iterrows():
+            q_id = f"q{idx+1}"
+            answer_key[q_id] = str(row.get("correct_answer", ""))
+            q_mapping[q_id] = {"topic": str(row.get("topic", "")), "sub_cpmk": ""}
+        num_questions = len(df_soal)
+        st.success(f"Berhasil memuat {num_questions} soal dari CSV.")
 
 st.divider()
+
+# Ensure num_questions matches the final answer key size
+num_questions_final = len(answer_key) if answer_key else num_questions
 
 # Student responses
 st.subheader("👥 Jawaban Mahasiswa")
@@ -61,12 +123,14 @@ if input_method == "Upload CSV":
         st.success(f"{len(student_responses)} mahasiswa terdeteksi.")
 else:
     num_students = st.number_input("Jumlah Mahasiswa", min_value=1, max_value=100, value=5)
+    if num_questions_final == 0:
+        st.warning("Tentukan kunci jawaban terlebih dahulu untuk menginput jawaban mahasiswa secara manual.")
     for s in range(num_students):
         with st.expander(f"Mahasiswa {s+1}"):
             sid = st.text_input(f"ID/NIM", key=f"sid_{s}", value=f"MHS-{s+1:03d}")
             answers = {}
             scols = st.columns(5)
-            for q in range(num_questions):
+            for q in range(num_questions_final):
                 with scols[q % 5]:
                     answers[f"q{q+1}"] = st.text_input(f"S{s+1}-Q{q+1}", key=f"s{s}_q{q+1}", max_chars=5)
             student_responses.append({"student_id": sid, "answers": answers})

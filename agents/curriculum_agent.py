@@ -18,6 +18,7 @@ from tools.database import save_rps_week, save_course, log_agent_decision
 
 def node_parse_input(state: EducatorCopilotState) -> dict:
     """Validate and normalize form input."""
+    print("\n[Curriculum Agent] Step 1/6: Parsing input...")
     course_data = state.get("course_data", {})
     steps = list(state.get("reasoning_steps", []))
 
@@ -53,6 +54,7 @@ def node_parse_input(state: EducatorCopilotState) -> dict:
 
 def node_analyze_constraints(state: EducatorCopilotState) -> dict:
     """Calculate Bloom-weighted topic distribution."""
+    print("[Curriculum Agent] Step 2/6: Analyzing constraints & Bloom distribution...")
     cpmk_list = state.get("cpmk_list", [])
     steps = list(state.get("reasoning_steps", []))
 
@@ -76,6 +78,7 @@ def node_analyze_constraints(state: EducatorCopilotState) -> dict:
 
 def node_draft_skeleton(state: EducatorCopilotState) -> dict:
     """Map topics to 14 effective weeks."""
+    print("[Curriculum Agent] Step 3/6: Drafting week skeleton...")
     course_data = state.get("course_data", {})
     cpmk_slots = state.get("cpmk_slot_distribution", [])
     steps = list(state.get("reasoning_steps", []))
@@ -113,6 +116,7 @@ def node_draft_skeleton(state: EducatorCopilotState) -> dict:
 
 def node_generate_weeks(state: EducatorCopilotState) -> dict:
     """Generate content for each week via LLM."""
+    print(f"[Curriculum Agent] Step 4/6: Generating RPS weeks via LLM (this may take a while)...")
     course_data = state.get("course_data", {})
     skeleton = state.get("week_skeleton", [])
     steps = list(state.get("reasoning_steps", []))
@@ -129,6 +133,7 @@ def node_generate_weeks(state: EducatorCopilotState) -> dict:
 
     for i, skel in enumerate(skeleton):
         aw = eff_to_actual.get(i + 1, i + 1)
+        print(f"  -> Generating content for Week {aw}/16 (Topic: {skel['topic']})...")
         prompt = f"""Kamu adalah asisten perancangan kurikulum perguruan tinggi Indonesia.
 Buat konten RPS untuk SATU pertemuan:
 MK: {course_data.get('name', '')} ({course_data.get('credits', 3)} SKS)
@@ -176,6 +181,7 @@ Output JSON (tanpa fence):
 
 def node_validate_alignment(state: EducatorCopilotState) -> dict:
     """Validate CPMK coverage."""
+    print("[Curriculum Agent] Step 5/6: Validating CPMK alignment...")
     rps_weeks = state.get("rps_weeks", [])
     cpmk_list = state.get("cpmk_list", [])
     steps = list(state.get("reasoning_steps", []))
@@ -215,6 +221,7 @@ def node_revise_if_needed(state: EducatorCopilotState) -> dict:
 
 def node_finalize_rps(state: EducatorCopilotState) -> dict:
     """Save RPS to database."""
+    print("[Curriculum Agent] Step 6/6: Finalizing and saving RPS...")
     course_data = state.get("course_data", {})
     rps_weeks = state.get("rps_weeks", [])
     steps = list(state.get("reasoning_steps", []))

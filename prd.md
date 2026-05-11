@@ -3,6 +3,7 @@
 **Project Name:** Educator Copilot
 **Status:** Final MVP Specification
 **Last Updated:** Mei 2026
+**Changelog v6.1:** Integrasi OpenRouter untuk model LLM (via ChatOpenAI `base_url`). Penambahan variabel lingkungan dinamis (`LLM_HEAVY_MODEL`, `LLM_LIGHT_MODEL`). Penambahan fitur AI Quiz Generator (pilihan ganda dan esai) berdasarkan teks materi.
 **Changelog v6.0:** Riset perbandingan template RPS dari 10 PT (ITB, UI, UGM, ITS, UB, Unhas, UNDIP, UNAIR, UPI, UNPAD). Model input superset multi-universitas. Arsitektur I-P-O diperinci. Daftar fungsi & workflow diperjelas. Preset template per institusi.
 **Changelog v5.0:** Stack diubah ke Python + LangGraph + Streamlit. Pemenuhan 5 kriteria wajib sistem agentic. Arsitektur LangGraph didefinisikan secara eksplisit.
 
@@ -632,6 +633,7 @@ Sistem menyediakan **4 preset** yang mengaktifkan/menonaktifkan field opsional:
 |---|--------|----------|
 | F14 | `search_references()` | Cari referensi pustaka via `web_search_tool` |
 | F15 | `extract_pdf_text()` | Ekstraksi teks PDF via `document_reader_tool` |
+| F15b| `generate_quiz_from_material()` | Generate kuis otomatis (PG/Esai) dari teks PDF |
 | F16 | `save_to_database()` | Simpan state/hasil ke SQLite via `database_tool` |
 | F17 | `load_from_database()` | Baca data dari SQLite |
 | F18 | `export_rps_docx()` | Export RPS ke DOCX sesuai format institusi |
@@ -650,7 +652,7 @@ Sistem menyediakan **4 preset** yang mengaktifkan/menonaktifkan field opsional:
 | F26 | `render_rps_table()` | Halaman 2 — Tabel RPS editable per minggu |
 | F27 | `render_week_approval()` | Halaman 2 — Approve/Edit/Revisi per baris |
 | F28 | `render_material_upload()` | Halaman 3 — Upload PDF + review AI |
-| F29 | `render_quiz_input()` | Halaman 4 — Input kuis + kunci jawaban |
+| F29 | `render_quiz_input()` | Halaman 4 — Input kuis (Manual/CSV/AI Generate) |
 | F30 | `render_performance_dashboard()` | Halaman 5 — Chart + tabel gap + slide |
 | F31 | `render_cpmk_report()` | Halaman 6 — Laporan rekapitulasi |
 | F32 | `render_export_panel()` | Halaman 7 — Export DOCX/PDF/PPTX |
@@ -1094,7 +1096,8 @@ Educator Copilot/
 │   ├── document_reader.py        # document_reader_tool
 │   ├── database.py          # database_tool + SQLite setup
 │   ├── calculator.py        # quiz_calculator_tool
-│   └── web_search.py        # web_search_tool
+│   ├── web_search.py        # web_search_tool
+│   └── quiz_generator.py    # [BARU] AI Quiz Generator (PG & Esai)
 ├── lib/
 │   ├── llm_router.py        # Tiered model routing + Ollama fallback
 │   ├── slide_exporter.py    # JSON → PPTX via python-pptx
@@ -1259,7 +1262,7 @@ if col2.button("⬇️ Export ke PPTX"):
 | Agent Framework     | LangGraph                                  | ≥ 0.2    | Orchestrasi multi-step reasoning           |
 | LLM Primary (heavy) | Claude Sonnet / GPT-4o                     | latest   | Analisis esai, RPS generation              |
 | LLM Primary (light) | Claude Haiku / GPT-4o-mini                 | latest   | Review materi, slide remedial, analisis PG |
-| LLM Fallback        | Ollama (llama3.2:3b, mistral:7b)           | latest   | Offline fallback                           |
+| LLM Fallback        | Ollama (gemma4:e4b, mistral:7b)           | latest   | Offline fallback                           |
 | LLM SDK             | `langchain-anthropic` + `langchain-openai` | latest   | Integrasi LangGraph ↔ LLM                  |
 | Database            | SQLite (via `sqlite3`)                     | built-in | Persistent memory, state                   |
 | PDF Parsing         | PyMuPDF (`fitz`)                           | ≥ 1.23   | Tool T1: ekstraksi teks materi             |
@@ -1295,52 +1298,84 @@ python-dotenv>=1.0.0
 ```python
 # lib/llm_router.py
 
-from langchain_anthropic import ChatAnthropic
-from langchain_community.llms import Ollama
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+HEAVY_MODEL = os.getenv("LLM_HEAVY_MODEL")
+LIGHT_MODEL = os.getenv("LLM_LIGHT_MODEL", "claude-haiku-4-20250414")
 
 TASK_MODEL_MAP = {
     # Task berat → model pintar
-    "rps_generation":       "claude-sonnet-20241022",
-    "essay_scoring":        "claude-sonnet-20241022",
+    "rps_generation":       HEAVY_MODEL,
+    "essay_scoring":        HEAVY_MODEL,
+    "quiz_generation":      HEAVY_MODEL,
     # Task ringan → model murah
-    "material_review":      "claude-haiku-20240307",
-    "pg_misconception":     "claude-haiku-20240307",
-    "remedial_generation":  "claude-haiku-20240307",
-    "reference_search":     "claude-haiku-20240307",
+    "material_review":      LIGHT_MODEL,
+    "pg_misconception":     LIGHT_MODEL,
+    "remedial_generation":  LIGHT_MODEL,
+    "reference_search":     LIGHT_MODEL,
+    "summary_generation":   LIGHT_MODEL,
 }
 
 OLLAMA_MODEL_MAP = {
-    "rps_generation":       "mistral:7b",
-    "essay_scoring":        "mistral:7b",
-    "material_review":      "llama3.2:3b",
-    "pg_misconception":     "llama3.2:3b",
-    "remedial_generation":  "llama3.2:3b",
+    "rps_generation":       "gemma4:e4b",
+    "essay_scoring":        "gemma4:e4b",
+    "quiz_generation":      "gemma4:e4b",
+    "material_review":      "gemma4:e4b",
+    "pg_misconception":     "gemma4:e4b",
+    "remedial_generation":  "gemma4:e4b",
+    "reference_search":     "gemma4:e4b",
+    "summary_generation":   "gemma4:e4b",
 }
 
 def get_llm(task: str, force_local: bool = False):
-    if force_local or os.getenv("FORCE_LOCAL_LLM") == "true":
-        model = OLLAMA_MODEL_MAP.get(task, "llama3.2:3b")
-        return Ollama(model=model)
+    if force_local or os.getenv("FORCE_LOCAL_LLM", "").lower() == "true":
+        try:
+            from langchain_ollama import OllamaLLM
+            model = OLLAMA_MODEL_MAP.get(task, "gemma4:e4b")
+            return OllamaLLM(model=model)
+        except ImportError:
+            pass
 
-    model = TASK_MODEL_MAP.get(task, "claude-haiku-20240307")
-    return ChatAnthropic(
-        model=model,
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
-        max_retries=2,
-        timeout=30
-    )
+    # Try OpenRouter
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if openrouter_key and openrouter_key.startswith("sk-or-"):
+        try:
+            from langchain_openai import ChatOpenAI
+            raw_model = TASK_MODEL_MAP.get(task, LIGHT_MODEL)
+            # Opsional: Map legacy name ke OpenRouter name jika belum diset di .env
+            legacy_or_map = {
+                "claude-gemma4:e4b-4-20250514": "anthropic/claude-3.5-sonnet",
+                "claude-haiku-4-20250414": "anthropic/claude-3-haiku",
+            }
+            model = legacy_or_map.get(raw_model, raw_model)
+            
+            return ChatOpenAI(
+                model=model,
+                api_key=openrouter_key,
+                base_url="https://openrouter.ai/api/v1",
+                max_retries=2,
+            )
+        except ImportError:
+            pass
+
+    # Try standard Anthropic/OpenAI fallback di sini...
 
 def call_llm_with_fallback(task: str, prompt: str) -> str:
     try:
         llm = get_llm(task, force_local=False)
         response = llm.invoke(prompt)
-        return response.content
+        return response.content if hasattr(response, "content") else str(response)
     except Exception as e:
         print(f"[LLM Router] Primary failed ({e}), falling back to Ollama...")
-        llm = get_llm(task, force_local=True)
-        response = llm.invoke(prompt)
-        return response.content if hasattr(response, 'content') else str(response)
+        try:
+            llm = get_llm(task, force_local=True)
+            response = llm.invoke(prompt)
+            return response.content if hasattr(response, "content") else str(response)
+        except Exception as e2:
+            return f"[ERROR] All LLM backends failed: {e2}"
 ```
 
 **Estimasi biaya per semester (1 mata kuliah):**
