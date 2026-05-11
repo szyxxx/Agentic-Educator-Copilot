@@ -48,7 +48,7 @@ def node_score_responses(state: EducatorCopilotState) -> dict:
         scored.append({"student_id": sid, "score": score, "correct": correct,
                        "total": total, "wrong_questions": wrong})
 
-    stats = quiz_calculator_tool.invoke(all_scores) if all_scores else {}
+    stats = quiz_calculator_tool.invoke({"scores": all_scores}) if all_scores else {}
 
     steps.append({"step": "score_responses",
                   "result": f"{len(scored)} students scored. Mean: {stats.get('mean', 0)}, "

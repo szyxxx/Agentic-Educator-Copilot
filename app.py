@@ -4,8 +4,12 @@ Educator Copilot — Main Streamlit Entry Point
 Dashboard interaktif untuk dosen mengelola RPS, kuis, dan remedial.
 """
 
+import os
+os.environ["LANGCHAIN_SUPPRESS_DEPRECATION_WARNINGS"] = "1"
+
 import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain")
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 warnings.filterwarnings("ignore", message=".*allowed_objects.*")
 
 import streamlit as st

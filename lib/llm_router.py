@@ -1,7 +1,7 @@
 """
 Educator Copilot — LLM Router & Cost Optimization
 ====================================================
-Tiered model routing: heavy tasks → Sonnet/GPT-4o, light tasks → Haiku/mini.
+Tiered model routing: heavy tasks → gemma4:e4b/GPT-4o, light tasks → Haiku/mini.
 Automatic fallback to Ollama for offline operation.
 """
 
@@ -12,28 +12,33 @@ load_dotenv()
 
 # ── Model Maps ──────────────────────────────────────────────────
 
+HEAVY_MODEL = os.getenv("LLM_HEAVY_MODEL")
+LIGHT_MODEL = os.getenv("LLM_LIGHT_MODEL", "claude-haiku-4-20250414")
+
 TASK_MODEL_MAP = {
     # Heavy tasks → smart model
-    "rps_generation":       "claude-sonnet-4-20250514",
-    "essay_scoring":        "claude-sonnet-4-20250514",
+    "rps_generation":       HEAVY_MODEL,
+    "essay_scoring":        HEAVY_MODEL,
+    "quiz_generation":      HEAVY_MODEL,
     # Light tasks → cheap model
-    "material_review":      "claude-haiku-4-20250414",
-    "pg_misconception":     "claude-haiku-4-20250414",
-    "remedial_generation":  "claude-haiku-4-20250414",
-    "reference_search":     "claude-haiku-4-20250414",
-    "week_generation":      "claude-haiku-4-20250414",
-    "summary_generation":   "claude-haiku-4-20250414",
+    "material_review":      LIGHT_MODEL,
+    "pg_misconception":     LIGHT_MODEL,
+    "remedial_generation":  LIGHT_MODEL,
+    "reference_search":     LIGHT_MODEL,
+    "week_generation":      LIGHT_MODEL,
+    "summary_generation":   LIGHT_MODEL,
 }
 
 OLLAMA_MODEL_MAP = {
-    "rps_generation":       "mistral:7b",
-    "essay_scoring":        "mistral:7b",
-    "material_review":      "llama3.2:3b",
-    "pg_misconception":     "llama3.2:3b",
-    "remedial_generation":  "llama3.2:3b",
-    "reference_search":     "llama3.2:3b",
-    "week_generation":      "llama3.2:3b",
-    "summary_generation":   "llama3.2:3b",
+    "rps_generation":       "gemma4:e4b",
+    "essay_scoring":        "gemma4:e4b",
+    "quiz_generation":      "gemma4:e4b",
+    "material_review":      "gemma4:e4b",
+    "pg_misconception":     "gemma4:e4b",
+    "remedial_generation":  "gemma4:e4b",
+    "reference_search":     "gemma4:e4b",
+    "week_generation":      "gemma4:e4b",
+    "summary_generation":   "gemma4:e4b",
 }
 
 
@@ -45,21 +50,49 @@ def get_llm(task: str, force_local: bool = False):
     """
     if force_local or os.getenv("FORCE_LOCAL_LLM", "").lower() == "true":
         try:
-            from langchain_community.llms import Ollama
-            model = OLLAMA_MODEL_MAP.get(task, "llama3.2:3b")
-            return Ollama(model=model)
+            from langchain_ollama import OllamaLLM
+            model = OLLAMA_MODEL_MAP.get(task, "gemma4:e4b")
+            return OllamaLLM(model=model)
         except ImportError:
-            raise RuntimeError("Ollama not available. Install: pip install ollama")
+            raise RuntimeError("Ollama not available. Install: pip install langchain-ollama")
 
-    # Try Anthropic first
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if api_key and api_key.startswith("sk-ant"):
+    # Try OpenRouter
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    
+    # Fallback if user placed OpenRouter key in ANTHROPIC_API_KEY
+    anth_key = os.getenv("ANTHROPIC_API_KEY")
+    if not openrouter_key and anth_key and anth_key.startswith("sk-or-"):
+        openrouter_key = anth_key
+
+    if openrouter_key and openrouter_key.startswith("sk-or-"):
+        try:
+            from langchain_openai import ChatOpenAI
+            
+            # Use the model defined in TASK_MODEL_MAP. If it's a legacy Anthropic model name, map it to a valid OpenRouter model.
+            legacy_or_map = {
+                "claude-gemma4:e4b-4-20250514": "anthropic/claude-3.5-sonnet",
+                "claude-haiku-4-20250414": "anthropic/claude-3-haiku",
+            }
+            raw_model = TASK_MODEL_MAP.get(task, LIGHT_MODEL)
+            model = legacy_or_map.get(raw_model, raw_model)
+            
+            return ChatOpenAI(
+                model=model,
+                api_key=openrouter_key,
+                base_url="https://openrouter.ai/api/v1",
+                max_retries=2,
+            )
+        except ImportError:
+            pass
+
+    # Try Anthropic
+    if anth_key and anth_key.startswith("sk-ant"):
         try:
             from langchain_anthropic import ChatAnthropic
-            model = TASK_MODEL_MAP.get(task, "claude-haiku-4-20250414")
+            model = TASK_MODEL_MAP.get(task, LIGHT_MODEL)
             return ChatAnthropic(
                 model=model,
-                api_key=api_key,
+                api_key=anth_key,
                 max_retries=2,
                 timeout=60,
             )
@@ -73,10 +106,10 @@ def get_llm(task: str, force_local: bool = False):
             from langchain_openai import ChatOpenAI
             # Map Anthropic model names to OpenAI equivalents
             openai_map = {
-                "claude-sonnet-4-20250514": "gpt-4o",
+                "claude-gemma4:e4b-4-20250514": "gpt-4o",
                 "claude-haiku-4-20250414": "gpt-4o-mini",
             }
-            anthropic_model = TASK_MODEL_MAP.get(task, "claude-haiku-4-20250414")
+            anthropic_model = TASK_MODEL_MAP.get(task, LIGHT_MODEL)
             model = openai_map.get(anthropic_model, "gpt-4o-mini")
             return ChatOpenAI(model=model, api_key=openai_key, max_retries=2)
         except ImportError:
@@ -84,9 +117,9 @@ def get_llm(task: str, force_local: bool = False):
 
     # Fallback to Ollama
     try:
-        from langchain_community.llms import Ollama
-        model = OLLAMA_MODEL_MAP.get(task, "llama3.2:3b")
-        return Ollama(model=model)
+        from langchain_ollama import OllamaLLM
+        model = OLLAMA_MODEL_MAP.get(task, "gemma4:e4b")
+        return OllamaLLM(model=model)
     except ImportError:
         raise RuntimeError(
             "No LLM available. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, "
@@ -117,5 +150,5 @@ def call_llm_with_fallback(task: str, prompt: str) -> str:
 def get_model_name(task: str) -> str:
     """Get the model name that would be used for a task (for logging)."""
     if os.getenv("FORCE_LOCAL_LLM", "").lower() == "true":
-        return OLLAMA_MODEL_MAP.get(task, "llama3.2:3b")
-    return TASK_MODEL_MAP.get(task, "claude-haiku-4-20250414")
+        return OLLAMA_MODEL_MAP.get(task, "gemma4:e4b")
+    return TASK_MODEL_MAP.get(task, LIGHT_MODEL)
