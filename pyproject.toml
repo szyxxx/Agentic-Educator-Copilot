@@ -1,0 +1,22 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckduckgo-search>=5.0.0",
+    "langchain-anthropic>=0.1.0",
+    "langchain-community>=0.2.0",
+    "langchain-core>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "langgraph>=0.2.0",
+    "ollama>=0.2.0",
+    "pandas>=2.0.0",
+    "plotly>=5.0.0",
+    "pymupdf>=1.23.0",
+    "python-docx>=1.1.0",
+    "python-dotenv>=1.0.0",
+    "python-pptx>=0.6.21",
+    "streamlit>=1.35.0",
+]
