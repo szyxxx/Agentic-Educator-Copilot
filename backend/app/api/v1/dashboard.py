@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
+from app.services.pdf_generator import generate_analytics_pdf
 from app.core import stats
 from app.core.stats import unique_submitters
 from app.core.sndikti_catalog import run_catalog
@@ -446,6 +448,35 @@ def get_analytics(course_id: str | None = None, db: Session = Depends(get_sessio
         "quizzes_total": quizzes_total,
         "per_student": per_student,
     }
+
+
+@router.get("/analytics/export")
+def export_analytics(course_id: str | None = None, db: Session = Depends(get_session)):
+    # Re-use get_analytics data
+    analytics_data = get_analytics(course_id=course_id, db=db)
+    
+    # Try to get RPS data
+    course_name = analytics_data.get("course_overview", {}).get("course", "")
+    course = db.query(Course).filter(Course.name == course_name).first()
+    rps_data = None
+    if course:
+        rps = db.query(RPS).filter(RPS.course_id == course.id).first()
+        if rps:
+            # Re-use get_rps_detail data
+            from app.api.v1.dashboard import get_rps_detail
+            try:
+                rps_data = get_rps_detail(rps_id=rps.id, db=db)
+            except Exception:
+                pass
+
+    pdf_buffer = generate_analytics_pdf(analytics_data, rps_data)
+    
+    filename = f"Laporan_Analitik_{course_name.replace(' ', '_')}.pdf"
+    headers = {
+        "Content-Disposition": f"attachment; filename={filename}"
+    }
+    
+    return StreamingResponse(pdf_buffer, media_type="application/pdf", headers=headers)
 
 
 @router.get("/courses")
