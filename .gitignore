@@ -12,3 +12,4 @@ __pycache__/
 # Course material and assignment files stay local
 docs/*.pdf
 docs/*.xlsx
+docs/bukti-uji/
