@@ -56,12 +56,14 @@ Wawancara dilakukan berdua. Peran pewawancara dan pengamat digilir supaya hasil 
 
 Tim sudah memiliki prototipe dari mata kuliah lain. Risikonya, tim hanya melihat masalah yang cocok dengan prototipe itu. Karena itu:
 
-- Jangan membawa, menyebut, atau memperagakan prototipe maupun rancangan apa pun selama observasi dan wawancara.
+- Jangan membawa, menyebut, atau memperagakan prototipe maupun rancangan apa pun selama observasi dan wawancara. Satu-satunya pengecualian adalah pemberitahuan setelah semua pertanyaan selesai.
 - Catat apa yang terjadi, bukan apa yang perlu dibuat. Masalah tidak boleh berisi asumsi solusi teknologi.
   - Contoh format, bukan data. Hindari: "Perlu aplikasi untuk [hal]." Tulis: "[Apa yang terjadi] di [lokasi] pada [waktu], tampak [angka atau kondisi]."
 - Jika narasumber mengusulkan solusi, catat sebagai pendapat, lalu tanyakan masalah apa yang ingin diatasi dengan usulan itu.
 - Jangan membuat pertanyaan yang sudah berisi kesimpulan. Contoh format: ganti "Apakah [hal] merepotkan?" dengan "Bagaimana [hal] berjalan?"
-- Jika narasumber bertanya apakah tim sudah punya rancangan, jawab jujur: tim memiliki prototipe dari mata kuliah lain, relevansinya belum diputuskan, dan tim ingin memahami kondisi nyata lebih dulu. Bila memungkinkan, bahas setelah wawancara selesai, dan catat kejadiannya di ringkasan.
+- Setiap narasumber diberi tahu tentang prototipe setelah wawancara selesai, walau tidak bertanya. Pakai naskah di bagian 7.1, setelah semua pertanyaan dan permintaan dokumen selesai dan perekam dimatikan. Jangan menyebut nama produk, jangan menjelaskan cara kerjanya, dan jangan membuka diskusi fitur.
+- Jika narasumber bertanya lebih dulu apakah tim sudah punya rancangan, jangan menyangkal. Katakan tim akan menjawabnya setelah semua pertanyaan selesai. Jika narasumber tetap ingin tahu saat itu, bacakan naskah pemberitahuan, lalu catat di ringkasan pada pertanyaan mana hal itu terjadi, karena jawaban sesudahnya bisa terpengaruh.
+- Tanggapan narasumber setelah pemberitahuan bukan bukti masalah. Catat terpisah dan jangan dikutip sebagai temuan.
 - Daftar masalah diperiksa oleh anggota yang paling sedikit terlibat dalam prototipe.
 - Hasil "tidak ditemukan masalah yang terkait kluster kandidat" adalah hasil yang sah.
 
@@ -412,7 +414,7 @@ Pakai untuk hal apa pun yang disebut narasumber.
 3. Menurut Anda, siapa lagi yang sebaiknya kami temui?
 4. Bolehkah kami menghubungi Anda jika ada hal yang perlu diperjelas?
 
-Sampaikan terima kasih, ulangi dokumen yang dijanjikan, dan sebutkan kapan ringkasan dikirim jika narasumber memintanya.
+Lanjutkan ke permintaan dokumen, lalu ke pemberitahuan setelah wawancara. Sesudah itu sampaikan terima kasih, ulangi dokumen yang dijanjikan, dan sebutkan kapan ringkasan dikirim jika narasumber memintanya.
 
 **Permintaan dokumen untuk semua peran**
 
@@ -421,6 +423,16 @@ Minta dokumen yang berkaitan dengan hal yang disebut narasumber, bukan daftar te
 > Tadi Anda menyebut [hal yang disebut narasumber]. Adakah SOP, panduan, laporan, catatan, atau tangkapan layar yang menunjukkan hal itu dan boleh kami lihat? Mohon data pribadi disembunyikan lebih dulu.
 
 Catat setiap dokumen di lembar ringkasan dan beri ID `DOK` atau `TKL`.
+
+**Pemberitahuan setelah wawancara untuk semua peran**
+
+Wajib untuk setiap narasumber. Bacakan hanya setelah semua pertanyaan dan permintaan dokumen selesai, dan setelah perekam dimatikan.
+
+> Semua pertanyaan kami sudah selesai. Ada satu hal yang perlu kami sampaikan. Tim kami sudah memiliki prototipe dari mata kuliah lain. Kami sengaja tidak menyebutkannya tadi supaya tidak memengaruhi cerita Anda. Belum diputuskan apakah prototipe itu relevan dengan kondisi di prodi ini. Jika hal ini mengubah pertimbangan Anda, Anda tetap boleh menarik keterangan sampai tanggal di lembar persetujuan.
+
+Jika narasumber bertanya isi prototipe atau meminta pendapat tentangnya, jawab:
+
+> Terima kasih, tetapi kami belum bisa membahasnya karena kami masih mengumpulkan keterangan tentang kondisi nyata. Jika Anda ingin penjelasan, silakan hubungi kontak di lembar persetujuan setelah tahap ini selesai.
 
 <div style="page-break-after: always;"></div>
 
@@ -454,6 +466,8 @@ Isian: ID wawancara WWC____-DSN  Tanggal: ____________  Jam: ________  Tempat: _
 
 **Permintaan dokumen:** pakai kalimat di bagian 7.1. Hanya minta dokumen yang berkaitan dengan cerita narasumber, misalnya panduan kerja, laporan, atau tangkapan layar.
 
+**Setelah semua pertanyaan selesai:** matikan perekam, lalu bacakan pemberitahuan di bagian 7.1.
+
 <div style="page-break-after: always;"></div>
 
 ### 7.3 Mahasiswa
@@ -485,6 +499,8 @@ Isian: ID wawancara WWC____-MHS  Tanggal: ____________  Jam: ________  Tempat: _
 **Penutup:** pakai penutup di bagian 7.1.
 
 **Permintaan dokumen:** pakai kalimat di bagian 7.1. Hanya minta dokumen yang berkaitan dengan cerita narasumber, misalnya pengumuman, panduan, atau tangkapan layar yang tidak memuat data pribadi.
+
+**Setelah semua pertanyaan selesai:** matikan perekam, lalu bacakan pemberitahuan di bagian 7.1.
 
 <div style="page-break-after: always;"></div>
 
@@ -519,6 +535,8 @@ Isian: ID wawancara WWC____-KPR  Tanggal: ____________  Jam: ________  Tempat: _
 
 **Permintaan dokumen:** pakai kalimat di bagian 7.1. Hanya minta dokumen yang berkaitan dengan cerita narasumber, misalnya SOP, target, laporan evaluasi, atau dokumen kebijakan.
 
+**Setelah semua pertanyaan selesai:** matikan perekam, lalu bacakan pemberitahuan di bagian 7.1.
+
 <div style="page-break-after: always;"></div>
 
 ### 7.5 Tenaga kependidikan
@@ -552,6 +570,8 @@ Isian: ID wawancara WWC____-TDK  Tanggal: ____________  Jam: ________  Tempat: _
 
 **Permintaan dokumen:** pakai kalimat di bagian 7.1. Hanya minta dokumen yang berkaitan dengan cerita narasumber, misalnya SOP, formulir kosong, rekap, logbook, atau tangkapan layar tanpa data pribadi.
 
+**Setelah semua pertanyaan selesai:** matikan perekam, lalu bacakan pemberitahuan di bagian 7.1.
+
 <div style="page-break-after: always;"></div>
 
 ## 8. Ringkasan, triangulasi, dan pengecekan
@@ -567,6 +587,8 @@ Tulis pada hari yang sama. Satu lembar untuk satu wawancara. Jangan menulis nama
 | Durasi | | Pewawancara dan pencatat (kode) | |
 | Persetujuan | ☐ Ada | Rekaman | ☐ Ada, ID: ☐ Tidak ada |
 | Periksa ringkasan oleh narasumber | ☐ Diminta ☐ Tidak diminta | Tanggal diperiksa | |
+| Sudah diberi tahu tentang prototipe | ☐ Sudah, setelah semua pertanyaan selesai ☐ Belum, alasan: | Bertanya lebih dulu | ☐ Tidak ☐ Ya, pada pertanyaan: |
+| Penarikan keterangan | ☐ Tidak ☐ Ya, tanggal: | Pemberi tahu (kode) | |
 
 **Gambaran pekerjaan atau kegiatan narasumber**
 
@@ -603,7 +625,7 @@ Tulis pada hari yang sama. Satu lembar untuk satu wawancara. Jangan menulis nama
 | | | | |
 | | | | |
 
-**Pertanyaan yang muncul dari narasumber kepada tim, dan jawaban tim**
+**Pertanyaan yang muncul dari narasumber kepada tim, dan jawaban tim** (termasuk tanggapan setelah pemberitahuan, yang bukan bukti masalah)
 
 <br><br>
 
