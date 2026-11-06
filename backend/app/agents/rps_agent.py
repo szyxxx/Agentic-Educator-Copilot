@@ -2,6 +2,8 @@ import operator
 from typing import TypedDict, List, Annotated
 from langgraph.graph import StateGraph, END
 from app.core.llm import get_llm
+from app.core.llm_json import invoke_json
+from app.core.llm_schemas import OUTCOMES, STRINGS, SCHEDULE, validate_meeting_mapping
 from langchain_core.messages import SystemMessage, HumanMessage
 
 class CurriculumState(TypedDict):
@@ -111,14 +113,10 @@ def generate_cpl_cpmk_node(state: CurriculumState):
     import json
     raw_response_text = ""
     try:
-        response = llm.invoke(prompt)
-        raw_response_text = response.content or ""
-        text = raw_response_text.replace("```json", "").replace("```", "").strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            text = text[start:end]
-        parsed = json.loads(text)
+        def validate_outcomes(value):
+            if (not user_cpl and not value["cpl"]) or (not user_cpmk and not value["cpmk"]):
+                raise ValueError("CPL/CPMK yang diminta kosong")
+        parsed = invoke_json(llm, prompt, adapter=OUTCOMES, validate=validate_outcomes)
         cpl_items = parsed.get("cpl") or []
         cpmk_items = parsed.get("cpmk") or []
     except Exception as e:
@@ -171,13 +169,7 @@ def synthesize_bahan_kajian_node(state: CurriculumState):
     """
     import json
     try:
-        response = llm.invoke(prompt)
-        text = (response.content or "").replace("```json", "").replace("```", "").strip()
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start < 0 or end <= start:
-            raise ValueError("Bahan kajian bukan JSON array")
-        parsed = json.loads(text[start:end])
+        parsed = invoke_json(llm, prompt, adapter=STRINGS)
         cleaned = [str(b).strip() for b in parsed if str(b).strip()]
         # De-duplicate while preserving order
         seen, out = set(), []
@@ -236,13 +228,7 @@ def synthesize_references_node(state: CurriculumState):
     """
     import json
     try:
-        response = llm.invoke(prompt)
-        text = (response.content or "").replace("```json", "").replace("```", "").strip()
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start < 0 or end <= start:
-            raise ValueError("Referensi bukan JSON array")
-        parsed = json.loads(text[start:end])
+        parsed = invoke_json(llm, prompt, adapter=STRINGS)
         cleaned = [str(r).strip() for r in parsed if str(r).strip() and len(str(r).strip()) > 10]
         seen, out = set(), []
         for r in cleaned:
@@ -363,14 +349,12 @@ def draft_rps_node(state: CurriculumState):
     """
     import json
     try:
-        response = llm.invoke(prompt)
-        text = response.content.replace("```json", "").replace("```", "").strip()
-        # Find JSON array boundaries
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start >= 0 and end > start:
-            text = text[start:end]
-        meetings = json.loads(text)
+        def validate_schedule(value):
+            if {m["week"] for m in value} != set(range(1, 17)):
+                raise ValueError("Jadwal harus memuat minggu 1–16 tepat sekali")
+            for m in value:
+                validate_meeting_mapping(m, bahan_kajian=bahan_kajian, cpmk_count=len(cpmk_clean), reference_count=len(references_list_lines))
+        meetings = invoke_json(llm, prompt, adapter=SCHEDULE, validate=validate_schedule)
     except Exception as e:
         raise ValueError("Gagal membuat jadwal RPS") from e
 

@@ -21,6 +21,9 @@ from typing import Annotated, List, TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.core.llm import get_llm
+from app.core import config
+from app.core.llm_json import invoke_json
+from app.core.llm_schemas import SCORES
 
 
 class GradingState(TypedDict):
@@ -111,13 +114,13 @@ def grade_essay_node(state: GradingState):
 
     try:
         llm = get_llm("complex")
-        resp = llm.invoke(prompt)
-        raw = (resp.content or "").replace("```json", "").replace("```", "").strip()
-        start = raw.find("[")
-        end = raw.rfind("]") + 1
-        if start < 0 or end <= start:
-            raise ValueError("LLM response without JSON array")
-        parsed = json.loads(raw[start:end])
+        def validate_scores(items):
+            expected = {q["id"]: float(q.get("max_score") or 30) for q in essays}
+            if len(items) != len(expected) or {item["id"] for item in items} != set(expected):
+                raise ValueError("Penilaian esai tidak lengkap atau ID ganda")
+            if any(item["score"] > expected[item["id"]] for item in items):
+                raise ValueError("Skor di luar rentang rubrik")
+        parsed = invoke_json(llm, prompt, adapter=SCORES, validate=validate_scores, temperature=0, seed=config.OLLAMA_GRADING_SEED)
     except Exception as e:
         print(f"[grading] essay LLM failed: {e}")
         parsed = []

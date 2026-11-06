@@ -9,6 +9,8 @@ from pydantic import BaseModel
 
 from app.agents.rps_agent import build_curriculum_graph
 from app.core.database import get_session
+from app.core.llm_json import invoke_json
+from app.core.llm_schemas import PATCHES, MEETING, validate_meeting_mapping
 from app.core.rps_constants import (
     UAS_MODULE,
     UAS_TITLE,
@@ -1220,13 +1222,22 @@ def fill_missing(rps_id: str, db: Session = Depends(get_session)):
         from app.core.llm import get_llm
 
         llm = get_llm("complex")
-        resp = llm.invoke(prompt)
-        text = (getattr(resp, "content", "") or "").replace("```json", "").replace("```", "").strip()
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start < 0 or end <= start:
-            raise ValueError("LLM tidak mengembalikan JSON array.")
-        parsed = json.loads(text[start:end])
+        def validate_patches(items):
+            if len(items) != len(blanks_per_meeting) or {item["week"] for item in items} != set(blanks_per_meeting):
+                raise ValueError("Isian pertemuan belum lengkap")
+            for item in items:
+                values = item["fills"]
+                for field in blanks_per_meeting[item["week"]]:
+                    value = values.get(field)
+                    if _is_blank(value):
+                        raise ValueError("Field yang diminta masih kosong")
+                    if field == "bahan_kajian_topik" and value not in (rps.bahan_kajian or []):
+                        raise ValueError("Bahan kajian tidak valid")
+                    if field == "cpmk_number" and not 1 <= value <= len(rps.cpmk_list or []):
+                        raise ValueError("CPMK tidak valid")
+                    if field == "reference_indices" and any(i > len(rps.references_list or []) for i in value):
+                        raise ValueError("Referensi tidak valid")
+        parsed = invoke_json(llm, prompt, adapter=PATCHES, validate=validate_patches)
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"LLM gagal: {e}")
 
@@ -1537,13 +1548,11 @@ def regenerate_week(
         from app.core.llm import get_llm
 
         llm = get_llm("complex")
-        response = llm.invoke(prompt)
-        text = (response.content or "").replace("```json", "").replace("```", "").strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start < 0 or end <= start:
-            raise ValueError("LLM tidak mengembalikan JSON yang valid.")
-        new_meeting = json.loads(text[start:end])
+        def validate_week(item):
+            if item["week"] != week:
+                raise ValueError("Nomor pertemuan tidak sesuai permintaan")
+            validate_meeting_mapping(item, bahan_kajian=rps.bahan_kajian or [], cpmk_count=len(rps.cpmk_list or []), reference_count=len(rps.references_list or []))
+        new_meeting = invoke_json(llm, prompt, adapter=MEETING, validate=validate_week)
 
         bahan_topik = coerce_bahan_kajian(
             new_meeting.get("bahan_kajian_topik", ""), rps.bahan_kajian or []

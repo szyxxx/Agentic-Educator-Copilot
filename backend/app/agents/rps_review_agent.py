@@ -29,6 +29,8 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 
 from app.core.llm import get_llm
+from app.core.llm_json import invoke_json
+from app.core.llm_schemas import DESCRIPTIONS, ALIGNMENT, TRANSITIONS
 from app.core.rps_constants import is_exam_week
 from app.core.sndikti_catalog import run_catalog
 
@@ -104,7 +106,7 @@ def _make_finding(
     }
 
 
-def _safe_llm_json(prompt: str, *, expect: str = "array") -> Any:
+def _safe_llm_json(prompt: str, *, expect: str = "array", adapter=None) -> Any:
     """Invoke the configured LLM and parse the first JSON object/array we find.
 
     `expect` is `"array"` or `"object"`. Returns `None` on failure so the
@@ -113,17 +115,10 @@ def _safe_llm_json(prompt: str, *, expect: str = "array") -> Any:
     """
     try:
         llm = get_llm("complex")
-        resp = llm.invoke(prompt)
-        text = (getattr(resp, "content", "") or "").replace("```json", "").replace("```", "").strip()
-        if expect == "array":
-            start = text.find("[")
-            end = text.rfind("]") + 1
-        else:
-            start = text.find("{")
-            end = text.rfind("}") + 1
-        if start < 0 or end <= start:
-            return None
-        return json.loads(text[start:end])
+        if adapter is None:
+            from pydantic import TypeAdapter
+            adapter = TypeAdapter(list[dict] if expect == "array" else dict)
+        return invoke_json(llm, prompt, adapter=adapter)
     except Exception as e:  # pragma: no cover
         log.warning("[review] LLM JSON parse failed: %s", e)
         return None
@@ -229,7 +224,7 @@ def content_quality_node(state: ReviewState):
         [{{"week": 1, "description": "..."}}]
         Hanya JSON array.
         """
-        parsed = _safe_llm_json(prompt, expect="array") or []
+        parsed = _safe_llm_json(prompt, expect="array", adapter=DESCRIPTIONS) or []
         suggestions = {
             int(item.get("week", 0)): str(item.get("description", "")).strip()
             for item in parsed
@@ -304,7 +299,7 @@ def cpl_cpmk_alignment_node(state: ReviewState):
     `mismatches` hanya berisi entri di mana CPMK saat ini SECARA JELAS tidak optimal.
     Hanya keluarkan JSON.
     """
-    parsed = _safe_llm_json(prompt, expect="object") or {}
+    parsed = _safe_llm_json(prompt, expect="object", adapter=ALIGNMENT) or {}
 
     findings: list[dict] = []
     for item in parsed.get("mismatches") or []:
@@ -394,7 +389,7 @@ def continuity_node(state: ReviewState):
 
     Hanya outputkan JSON array.
     """
-    parsed = _safe_llm_json(prompt, expect="array") or []
+    parsed = _safe_llm_json(prompt, expect="array", adapter=TRANSITIONS) or []
 
     findings: list[dict] = []
     for item in parsed[:5]:

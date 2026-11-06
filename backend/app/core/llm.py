@@ -102,6 +102,10 @@ def _build_ollama(task: TaskKind) -> BaseChatModel | None:
             base_url=config.OLLAMA_BASE_URL,
             model=config.OLLAMA_MODEL,
             temperature=0.3 if task == "complex" else 0.5,
+            reasoning=False,
+            num_ctx=config.OLLAMA_NUM_CTX,
+            num_predict=config.OLLAMA_NUM_PREDICT,
+            keep_alive=config.OLLAMA_KEEP_ALIVE,
         )
     except Exception as e:  # pragma: no cover
         log.warning("[llm] Ollama init failed: %s", e)

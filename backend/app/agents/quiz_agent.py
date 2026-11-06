@@ -3,6 +3,8 @@ import json
 from typing import TypedDict, List, Annotated
 from langgraph.graph import StateGraph, END
 from app.core.llm import get_llm
+from app.core.llm_json import invoke_json
+from app.core.llm_schemas import array_adapter, MCQ, Essay
 
 
 class QuizState(TypedDict):
@@ -93,6 +95,12 @@ def lo_node(state: QuizState):
     return {}
 
 
+def _validate_question_ids(items: list[dict], start: int) -> None:
+    expected = {f"Q{i:03d}" for i in range(start, start + len(items))}
+    if {q["id"] for q in items} != expected:
+        raise ValueError("ID soal harus unik dan mengikuti urutan yang diminta")
+
+
 def generate_mcq_node(state: QuizState):
     """Generate MCQs as a single batched LLM call so we honor num_questions."""
     quiz_type = state.get("quiz_type") or "mixed"
@@ -137,8 +145,7 @@ def generate_mcq_node(state: QuizState):
     Gunakan id Q001, Q002, ... berurutan. Hanya outputkan JSON array.
     """
     try:
-        res = llm.invoke(prompt)
-        items = _extract_json_array(res.content)
+        items = invoke_json(llm, prompt, adapter=array_adapter(MCQ, count=mcq_count), validate=lambda values: _validate_question_ids(values, 1))
     except Exception as e:
         print(f"[quiz_agent] Error generating MCQ: {e}")
         items = []
@@ -203,8 +210,7 @@ def generate_essay_node(state: QuizState):
     Gunakan id Q{starting_index:03d}, Q{starting_index + 1:03d}, ... berurutan. Hanya outputkan JSON array.
     """
     try:
-        res = llm.invoke(prompt)
-        items = _extract_json_array(res.content)
+        items = invoke_json(llm, prompt, adapter=array_adapter(Essay, count=essay_count), validate=lambda values: _validate_question_ids(values, starting_index))
     except Exception as e:
         print(f"[quiz_agent] Error generating Essay: {e}")
         items = []

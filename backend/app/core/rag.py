@@ -1,14 +1,24 @@
 import os
-from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_ollama import OllamaEmbeddings
+from app.core import config
 
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR") or os.path.join(os.path.dirname(__file__), "..", "..", "chroma_db")
 
 def get_embeddings():
-    # Using a multilingual model that works well with Indonesian
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    if config.EMBEDDING_PROVIDER == "ollama":
+        # bge-m3 is multilingual; release it after use on memory-limited GPUs.
+        return OllamaEmbeddings(
+            model=config.OLLAMA_EMBEDDING_MODEL,
+            base_url=config.OLLAMA_EMBEDDING_BASE_URL,
+            keep_alive=0,
+            num_gpu=config.OLLAMA_EMBEDDING_NUM_GPU,
+        )
+    if config.EMBEDDING_PROVIDER == "huggingface":
+        return HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    raise ValueError(f"Penyedia embedding tidak dikenal: {config.EMBEDDING_PROVIDER}")
 
 def get_vectorstore(collection_name: str = "course_materials") -> Chroma:
     return Chroma(

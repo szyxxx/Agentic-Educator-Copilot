@@ -70,3 +70,13 @@ ANTHROPIC_MODEL_SIMPLE = os.getenv(
 # Local fallback
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b").strip()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip()
+
+# Local runtime controls (no paid-provider routing changes).
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "5m").strip()
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "8192"))
+OLLAMA_GRADING_SEED = int(os.getenv("OLLAMA_GRADING_SEED", "42"))
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "huggingface").strip().lower()
+OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "bge-m3").strip()
+OLLAMA_EMBEDDING_BASE_URL = os.getenv("OLLAMA_EMBEDDING_BASE_URL", OLLAMA_BASE_URL).strip()
+OLLAMA_EMBEDDING_NUM_GPU = int(os.getenv("OLLAMA_EMBEDDING_NUM_GPU", "0"))
