@@ -80,7 +80,7 @@ def list_materials(
             "course_id": m.course_id,
             "rps_id": m.rps_id,
             "status": m.status,
-            "status_text": m.status_text,
+            "status_text": "Belum diverifikasi" if m.status != "indexed" and m.status_text == "Terindeks" else m.status_text,
             "size": m.size,
             "updated_at": m.updated_at,
             "has_content": bool(m.content_text),
@@ -103,12 +103,16 @@ def create_material(data: MaterialPayload, db: Session = Depends(get_session)):
         week=data.week,
         cpmk=data.cpmk,
         status="ready",
-        status_text="Terindeks" if data.content_text else "Ready",
+        status_text="Belum diindeks" if data.content_text else "Ready",
         updated_at=datetime.now().strftime("%d %b %Y"),
         size=data.size,
     )
     _save(db, material)
     chunks = _index_in_rag(material)
+    if material.content_text:
+        material.status = "indexed" if chunks > 0 else "index_failed"
+        material.status_text = "Terindeks" if chunks > 0 else "Gagal diindeks"
+        db.commit()
     return {
         "id": material.id,
         "title": material.title,
@@ -171,12 +175,16 @@ async def upload_material(
         week=week,
         cpmk=cpmk,
         status="ready",
-        status_text="Terindeks" if text_content else "Ready",
+        status_text="Belum diindeks" if text_content else "Ready",
         updated_at=datetime.now().strftime("%d %b %Y"),
         size=size_label,
     )
     _save(db, material)
     chunks = _index_in_rag(material)
+    if material.content_text:
+        material.status = "indexed" if chunks > 0 else "index_failed"
+        material.status_text = "Terindeks" if chunks > 0 else "Gagal diindeks"
+        db.commit()
     return {
         "id": material.id,
         "title": material.title,

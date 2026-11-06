@@ -14,17 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api";
-import Submissions from "./Submissions";
-
-type Submission = {
-  id: string;
-  nim: string;
-  name: string;
-  answered_count: number;
-  status: "submitted" | "graded" | "unmatched";
-  score: number | null;
-  feedback: string | null;
-};
+import Submissions, { type Submission } from "./Submissions";
 
 export default function QuizDetailPage({
   params,
@@ -38,6 +28,8 @@ export default function QuizDetailPage({
   const [quiz, setQuiz] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [grading, setGrading] = useState(false);
+  const [serviceError, setServiceError] = useState<string | null>(null);
+  const [gradingError, setGradingError] = useState<string | null>(null);
   const [gradingResult, setGradingResult] = useState<any>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [expandedFeedback, setExpandedFeedback] = useState<string | null>(null);
@@ -45,13 +37,13 @@ export default function QuizDetailPage({
   const loadQuiz = () =>
     apiFetch<any>(`/api/quiz/${quizId}`)
       .then(setQuiz)
-      .catch((e) => console.error(e));
+      .catch((e) => setServiceError(e.message));
 
   const loadSubmissions = async () => {
     try {
       const data = await apiFetch<Submission[]>(`/api/quiz/${quizId}/submissions`);
       setSubmissions(data);
-    } catch (_) {}
+    } catch (e: any) { setServiceError(e.message); }
   };
 
   useEffect(() => {
@@ -74,22 +66,30 @@ export default function QuizDetailPage({
 
   const runGrading = async () => {
     setGrading(true);
+    setGradingError(null);
+    setGradingResult(null);
     try {
       const res = await apiFetch<any>(`/api/grading/run/${quizId}`, {
         method: "POST",
       });
       setGradingResult(res.data);
+      if (res.status !== "success") setGradingError(res.message);
+    } catch (e: any) {
+      setGradingError(e.message);
+    } finally {
       await loadSubmissions();
       await loadQuiz();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
       setGrading(false);
     }
   };
 
   if (!quiz) {
-    return <div className="p-8">Memuat data kuis...</div>;
+    return serviceError ? (
+      <div role="alert" className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+        <p>{serviceError}</p>
+        <Button onClick={() => window.location.reload()}>Coba lagi</Button>
+      </div>
+    ) : <div className="p-8">Memuat data kuis...</div>;
   }
 
   // Derive grading summary from submissions (survives page refresh)
@@ -107,6 +107,7 @@ export default function QuizDetailPage({
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
+      {serviceError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4">{serviceError}</p>}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
@@ -213,6 +214,7 @@ export default function QuizDetailPage({
 
       <Submissions
         quizId={quizId}
+        list={submissions}
         onChange={async () => {
           await loadQuiz();
           await loadSubmissions();
@@ -251,6 +253,8 @@ export default function QuizDetailPage({
                   : "▶ Jalankan Auto-Grading"}
           </Button>
 
+          {gradingError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">{gradingError}</p>}
+          {submissions.some(s => s.status === "manual_review") && <p role="status" className="text-sm text-amber-800">Ada esai yang belum berhasil dinilai. Nilai akhir belum tersedia. Periksa feedback pada tabel submission atau jalankan ulang penilaian.</p>}
           {/* Summary panel — from live run OR derived from stored submissions */}
           {showGradingPanel && (
             <div className="space-y-3">

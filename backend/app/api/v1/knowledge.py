@@ -191,9 +191,9 @@ def knowledge_graph(course_id: Optional[str] = None, db: Session = Depends(get_s
                         "type": mat.material_type,
                         "url": mat.url,
                         "week": mat.week,
-                        "indexed": bool(mat.content_text),
+                        "indexed": mat.status == "indexed",
                         "auto_generated": is_auto,
-                        "status": mat.status_text,
+                        "status": "Belum diverifikasi" if mat.status != "indexed" and mat.status_text == "Terindeks" else mat.status_text,
                         "size": mat.size,
                     },
                 }
@@ -254,7 +254,8 @@ def rag_query(payload: RagQuery, db: Session = Depends(get_session)):
             k=max(1, min(payload.k, 10)),
         )
     except Exception as e:  # pragma: no cover
-        raise HTTPException(status_code=500, detail=f"RAG retrieval gagal: {e}")
+        print(f"[knowledge] RAG retrieval failed: {e}")
+        raise HTTPException(status_code=503, detail="Pencarian materi belum tersedia. Pengambilan indeks gagal; silakan coba lagi setelah layanan indeks pulih.")
 
     out = []
     for doc in results:

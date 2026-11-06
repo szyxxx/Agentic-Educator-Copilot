@@ -5,6 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 
+// Dashboard data depends on the live API; do not prerender it during build.
+export const dynamic = "force-dynamic";
+
 const navItems = [
   { href: "/dashboard", label: "Beranda", icon: "📊" },
   { href: "/dashboard/courses", label: "Mata Kuliah", icon: "📚" },
@@ -16,7 +19,7 @@ const navItems = [
 ];
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  let activeClassesCount = 0;
+  let activeClassesCount: number | null = null;
   try {
     const data = await apiFetch<any>("/api/dashboard/overview");
     if (data && data.stats_blocks) {
@@ -67,7 +70,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
                   Status Semester
                 </p>
                 <p className="mt-2 text-sm text-slate-700">
-                  {activeClassesCount > 0
+                  {activeClassesCount === null
+                    ? "Status kelas belum tersedia: layanan tidak dapat dihubungi."
+                    : activeClassesCount > 0
                     ? `${activeClassesCount} mata kuliah sedang aktif berjalan.`
                     : "Belum ada mata kuliah aktif semester ini."}
                 </p>

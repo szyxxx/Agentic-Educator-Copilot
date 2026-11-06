@@ -15,6 +15,7 @@ score (0-100), and a list of weak topics inferred from missed questions.
 
 import json
 import operator
+import math
 from typing import Annotated, List, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -31,7 +32,7 @@ class GradingState(TypedDict):
     student_answers: dict
     mcq_scores: List[dict]
     essay_scores: List[dict]
-    total_score: float
+    total_score: float | None
     feedback_per_question: List[dict]
     overall_feedback: str
     weak_topics: List[str]
@@ -119,28 +120,37 @@ def grade_essay_node(state: GradingState):
         parsed = json.loads(raw[start:end])
     except Exception as e:
         print(f"[grading] essay LLM failed: {e}")
-        # Fallback — give 0 with a generic note
-        parsed = [
-            {
-                "id": q.get("id"),
-                "score": 0.0,
-                "feedback": "Gagal menilai otomatis. Mohon dinilai manual.",
-            }
-            for q in essays
-        ]
+        parsed = []
 
-    score_map = {p.get("id"): p for p in parsed if isinstance(p, dict)}
+    score_map = {}
+    duplicate_ids = set()
+    for item in parsed if isinstance(parsed, list) else []:
+        if isinstance(item, dict) and isinstance(item.get("id"), str):
+            qid = item["id"]
+            if qid in score_map:
+                duplicate_ids.add(qid)
+            score_map[qid] = item
     out = []
     for q in essays:
         max_score = float(q.get("max_score") or 30)
         info = score_map.get(q.get("id"), {})
-        score = float(info.get("score") or 0.0)
-        score = max(0.0, min(score, max_score))
+        try:
+            raw_score = info["score"]
+            if raw_score is None or isinstance(raw_score, bool) or q.get("id") in duplicate_ids:
+                raise ValueError("Skor tidak valid")
+            score = float(raw_score)
+            if not math.isfinite(score):
+                raise ValueError("Skor tidak berhingga")
+            score = max(0.0, min(score, max_score))
+            feedback = str(info.get("feedback") or "")
+        except (KeyError, TypeError, ValueError):
+            score = None
+            feedback = "Gagal menilai otomatis. Mohon dinilai manual."
         out.append(
             {
                 "id": q.get("id"),
                 "score": score,
-                "feedback": info.get("feedback", ""),
+                "feedback": feedback,
                 "max_score": max_score,
             }
         )
@@ -152,6 +162,9 @@ def aggregate_node(state: GradingState):
     mcq = state.get("mcq_scores") or []
     essay = state.get("essay_scores") or []
     questions = state.get("questions") or []
+
+    if any(item.get("score") is None for item in essay):
+        return {"total_score": None}
 
     earned = sum(item.get("score", 0.0) for item in mcq) + sum(
         item.get("score", 0.0) for item in essay
@@ -173,16 +186,20 @@ def feedback_node(state: GradingState):
     essay = state.get("essay_scores") or []
 
     correct_mcq = sum(1 for m in mcq if m.get("correct"))
-    weak_essay = [e.get("id") for e in essay if e.get("score", 0) < (e.get("max_score", 30) * 0.6)]
+    weak_essay = [e.get("id") for e in essay if e.get("score") is not None and e.get("score", 0) < (e.get("max_score", 30) * 0.6)]
 
-    bits = [f"Skor total {total} dari 100."]
+    pending = any(e.get("score") is None for e in essay)
+    bits = ["Nilai akhir belum tersedia; esai perlu penilaian manual atau dinilai ulang." if pending else f"Skor total {total} dari 100."]
     if mcq:
         bits.append(f"MCQ benar {correct_mcq}/{len(mcq)}.")
     if weak_essay:
         bits.append(f"Soal esai yang perlu diperdalam: {', '.join(weak_essay)}.")
-    elif essay:
+    elif essay and not pending:
         bits.append("Jawaban esai sudah memadai.")
 
+    for e in essay:
+        if e.get("feedback"):
+            bits.append(f"{e['id']}: {e['feedback']}")
     return {"overall_feedback": " ".join(bits)}
 
 
@@ -198,7 +215,7 @@ def weak_topics_node(state: GradingState):
         if any(m.get("id") == qid and not m.get("correct") for m in mcq):
             weak.append(q.get("question", qid)[:80])
         for e in essay:
-            if e.get("id") == qid and e.get("score", 0) < (e.get("max_score", 30) * 0.6):
+            if e.get("id") == qid and e.get("score") is not None and e.get("score", 0) < (e.get("max_score", 30) * 0.6):
                 weak.append(q.get("question", qid)[:80])
     seen, out = set(), []
     for t in weak:

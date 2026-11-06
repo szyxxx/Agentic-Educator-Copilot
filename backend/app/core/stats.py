@@ -282,7 +282,14 @@ def refresh_course_metrics(db: Session, course: Course) -> None:
         .filter(Quiz.course_id == course.id, Submission.score.is_(None))
         .count()
     )
-    course.avg_score = avg_score(db, course.id)
+    scores = submission_scores(db, course.id)
+    course.avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+    if not scores:
+        course.status, course.status_text = "warning", "Belum ada nilai"
+    elif course.avg_score < 60:
+        course.status, course.status_text = "danger", "Perlu Remedial"
+    else:
+        course.status, course.status_text = "ok", "On Track"
 
 
 # ---------------------------------------------------------------------------

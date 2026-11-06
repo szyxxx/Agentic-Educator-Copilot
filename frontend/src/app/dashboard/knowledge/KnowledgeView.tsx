@@ -151,7 +151,7 @@ export function KnowledgeView({ data, courses }: Props) {
                   <CardDescription>{material.topic}</CardDescription>
                 </div>
                 <Badge
-                  variant={material.status === "ready" ? "success" : "warning"}
+                  variant={material.status === "indexed" ? "success" : "warning"}
                 >
                   {material.status_text}
                 </Badge>

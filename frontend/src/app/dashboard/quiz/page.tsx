@@ -51,7 +51,7 @@ export default async function QuizAssessment() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         {data.summary.map((item: any) => (
           <Card key={item.label}>
             <CardHeader className="pb-2">
@@ -153,6 +153,19 @@ export default async function QuizAssessment() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle>Kuis Selesai</CardTitle><CardDescription>Kuis yang sudah ditutup atau selesai dinilai.</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          {data.completed.length === 0 && <p className="text-sm text-slate-500">Belum ada kuis selesai.</p>}
+          {data.completed.map((quiz: any) => (
+            <div key={quiz.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 p-4">
+              <div><p className="font-semibold">{quiz.title}</p><p className="text-sm text-slate-500">{quiz.course} · {quiz.details}</p></div>
+              <Link href={`/dashboard/quiz/${quiz.id}`}><Button size="sm" variant="outline">Lihat Hasil Detail</Button></Link>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

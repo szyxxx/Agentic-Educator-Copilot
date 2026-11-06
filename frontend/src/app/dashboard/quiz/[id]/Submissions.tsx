@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,13 +13,13 @@ import {
 } from "@/components/ui/card";
 import { apiFetch, apiUrl } from "@/lib/api";
 
-type Submission = {
+export type Submission = {
   id: string;
   nim: string;
   name: string;
   answered_count: number;
   answers: Record<string, string>;
-  status: "submitted" | "graded" | "unmatched";
+  status: "submitted" | "graded" | "unmatched" | "manual_review";
   score: number | null;
   feedback: string | null;
 };
@@ -35,33 +35,14 @@ type UploadReport = {
 
 type Props = {
   quizId: string;
-  /** Refresh the parent quiz card after counts change. */
-  onChange?: () => void;
+  list: Submission[];
+  onChange: () => Promise<void>;
 };
 
-export default function Submissions({ quizId, onChange }: Props) {
+export default function Submissions({ quizId, list, onChange }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
-  const [list, setList] = useState<Submission[]>([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [report, setReport] = useState<UploadReport | null>(null);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch<Submission[]>(
-        `/api/quiz/${quizId}/submissions`
-      );
-      setList(data);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quizId]);
 
   const handleUpload = async (file: File) => {
     setUploading(true);
@@ -79,8 +60,7 @@ export default function Submissions({ quizId, onChange }: Props) {
       }
       const data: UploadReport = await res.json();
       setReport(data);
-      await load();
-      onChange?.();
+      await onChange();
     } catch (e: any) {
       alert(`Gagal upload CSV: ${e.message}`);
     } finally {
@@ -94,16 +74,14 @@ export default function Submissions({ quizId, onChange }: Props) {
     await apiFetch(`/api/quiz/${quizId}/submissions/${id}`, {
       method: "DELETE",
     });
-    await load();
-    onChange?.();
+    await onChange();
   };
 
   const handleClearAll = async () => {
     if (!confirm("Hapus SEMUA submission untuk kuis ini?")) return;
     await apiFetch(`/api/quiz/${quizId}/submissions`, { method: "DELETE" });
     setReport(null);
-    await load();
-    onChange?.();
+    await onChange();
   };
 
   const counts = {
@@ -219,9 +197,7 @@ export default function Submissions({ quizId, onChange }: Props) {
           </div>
         )}
 
-        {loading ? (
-          <p className="text-sm text-slate-500">Memuat...</p>
-        ) : list.length === 0 ? (
+        {list.length === 0 ? (
           <p className="text-sm text-slate-500">
             Belum ada submission. Upload CSV jawaban mahasiswa.
           </p>
@@ -244,13 +220,23 @@ export default function Submissions({ quizId, onChange }: Props) {
                     <td className="py-2 pr-3 font-mono text-slate-700">
                       {s.nim}
                     </td>
-                    <td className="py-2 pr-3 text-slate-800">{s.name}</td>
+                    <td className="py-2 pr-3 text-slate-800">
+                      {s.name}
+                      {s.feedback && (
+                        <details className="mt-1 max-w-prose whitespace-normal text-sm text-slate-600">
+                          <summary className="cursor-pointer">Lihat feedback</summary>
+                          <p className="mt-1 whitespace-pre-wrap">{s.feedback}</p>
+                        </details>
+                      )}
+                    </td>
                     <td className="py-2 pr-3 text-slate-500">
                       {s.answered_count} soal
                     </td>
                     <td className="py-2 pr-3">
                       {s.status === "graded" ? (
                         <Badge variant="success">Dinilai</Badge>
+                      ) : s.status === "manual_review" ? (
+                        <Badge variant="warning">Perlu penilaian manual / ulang</Badge>
                       ) : s.status === "unmatched" ? (
                         <Badge variant="warning">Tidak Cocok</Badge>
                       ) : (

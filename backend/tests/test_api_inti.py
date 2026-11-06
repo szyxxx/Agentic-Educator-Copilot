@@ -1,7 +1,6 @@
 """Endpoint utama: dashboard, courses, students, materials, rps, quiz.
 
-Tes `xfail` merekam bug yang terlihat saat uji jalan A3. Penandanya strict, jadi
-perbaikan bug akan memaksa penanda dibuang.
+Tes regresi untuk perilaku yang benar setelah temuan uji jalan A3 diperbaiki.
 """
 
 import io
@@ -95,28 +94,11 @@ def test_analitik_dan_ekspor_pdf(client, llm, buat_kuis, unggah_jawaban, soal):
     assert pdf.content.startswith(b"%PDF")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: course_id tak dikenal diam-diam memakai mata kuliah pertama, "
-        "bukan 404, sehingga data kelas lain tampil (dashboard.py:369-370)."
-    ),
-)
 def test_analitik_course_tak_dikenal_404(client):
     res = client.get("/api/dashboard/analytics", params={"course_id": "tidak-ada"})
     assert res.status_code == 404
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: /api/dashboard/quizzes hanya mengembalikan active, attention, dan "
-        "draft. Kuis berstatus completed hilang dari halaman daftar kuis "
-        "(dashboard.py:321-323). Di DB sumber, kuis II5005 tidak terlihat."
-    ),
-)
 def test_kuis_selesai_tetap_terdaftar(client, buat_kuis, unggah_jawaban, soal):
     quiz_id = buat_kuis([soal.mcq1])
     unggah_jawaban(quiz_id, "NIM Mahasiswa,PG-1\n00000001,B\n")
@@ -124,14 +106,6 @@ def test_kuis_selesai_tetap_terdaftar(client, buat_kuis, unggah_jawaban, soal):
     assert quiz_id in str(client.get("/api/dashboard/quizzes").json())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: courses.status tidak pernah dihitung ulang, jadi kelas rata-rata "
-        "0 tetap 'On Track' (stats.py:269-285)."
-    ),
-)
 def test_status_mata_kuliah_mengikuti_nilai(client, buat_kuis, unggah_jawaban, soal):
     quiz_id = buat_kuis([soal.mcq1])
     unggah_jawaban(quiz_id, "NIM Mahasiswa,PG-1\n00000001,A\n")
@@ -186,15 +160,6 @@ def test_hapus_course_tak_dikenal_404(client):
     assert client.delete("/api/courses/tidak-ada").status_code == 404
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: hapus mata kuliah tidak menghapus submissions. Jawaban dan nilai "
-        "mahasiswa tertinggal tanpa kuis, dan tetap terhitung di 'Perlu Dinilai' "
-        "(courses.py:80-86)."
-    ),
-)
 def test_hapus_course_tidak_meninggalkan_submission(
     client, db, buat_kuis, unggah_jawaban, soal
 ):
@@ -314,7 +279,7 @@ def test_ubah_dan_hapus_materi(client):
     assert client.get(f"/api/materials/{mid}/content").status_code == 404
 
 
-def test_rekam_indeks_gagal_tetap_tersimpan(client, rag_palsu):
+def test_indeks_gagal_materi_tetap_tersimpan(client, rag_palsu):
     rag_palsu.error = OSError("Chroma tidak tersedia")
     res = client.post(
         "/api/materials/",
@@ -324,15 +289,6 @@ def test_rekam_indeks_gagal_tetap_tersimpan(client, rag_palsu):
     assert res.json()["indexed_chunks"] == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: status 'Terindeks' ditulis sebelum indeks dicoba dan tidak "
-        "dikoreksi saat gagal (materials.py:106, 111). Knowledge Hub menampilkan "
-        "'Terindeks 4' padahal folder chroma_db tidak ada."
-    ),
-)
 def test_status_materi_jujur_saat_indeks_gagal(client, rag_palsu):
     rag_palsu.error = OSError("Chroma tidak tersedia")
     client.post(
@@ -342,11 +298,12 @@ def test_status_materi_jujur_saat_indeks_gagal(client, rag_palsu):
     assert client.get("/api/materials/").json()[0]["status_text"] != "Terindeks"
 
 
-def test_rekam_pencarian_rag_gagal_jadi_500(client, rag_palsu):
+def test_pencarian_rag_gagal_memberi_galat(client, rag_palsu):
     rag_palsu.error = OSError("Chroma tidak tersedia")
     res = client.post("/api/knowledge/query", json={"query": "regresi"})
-    assert res.status_code == 500
-    assert "RAG retrieval gagal" in res.json()["detail"]
+    assert res.status_code == 503
+    assert "Pencarian materi" in res.json()["detail"]
+    assert "Chroma tidak tersedia" not in res.json()["detail"]
 
 
 def test_query_kosong_ditolak(client):
@@ -431,12 +388,12 @@ def test_regenerate_llm_gagal_mempertahankan_pertemuan(client, llm, rps_lengkap)
     assert len(client.get(f"/api/dashboard/rps/{rps_id}").json()["meetings"]) == 16
 
 
-def test_rekam_regenerasi_minggu_llm_gagal_jadi_500_mentah(client, llm, rps_lengkap):
+def test_regenerasi_minggu_llm_gagal_memberi_galat_aman(client, llm, rps_lengkap):
     rps_id = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
     llm.fail()
     res = client.post(f"/api/rps/{rps_id}/meetings/3/regenerate", json={"feedback": "x"})
-    assert res.status_code == 500
-    assert "Connection refused" in res.json()["detail"]
+    assert res.status_code == 503
+    assert "Connection refused" not in res.json()["detail"]
 
 
 def _generate(client, kode="UJ1001"):
@@ -446,25 +403,16 @@ def _generate(client, kode="UJ1001"):
     )
 
 
-def test_rekam_generate_llm_gagal_melapor_sukses_dengan_rps_kosong(client, llm):
+def test_generate_llm_gagal_tidak_menyimpan_rps_atau_course(client, llm):
     llm.fail()
     res = _generate(client, kode="BARU1")
-    assert res.status_code == 200
-    assert res.json()["status"] == "success"
-    detail = client.get(f"/api/dashboard/rps/{res.json()['data']['rps_id']}").json()
-    assert detail["meetings"] == []
+    assert res.status_code == 503
+    assert "RPS" in res.json()["detail"]
+    assert client.get("/api/dashboard/rps").json()["items"] == []
+    assert "BARU1" not in [c["code"] for c in client.get("/api/courses/").json()]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG KRITIS: /generate saat LLM gagal mengosongkan RPS yang ada, termasuk "
-        "yang sudah disetujui: pertemuan, CPL, CPMK, dan referensi hilang, status "
-        "kembali draft, respons tetap sukses (rps.py:434-438, 81). Guard "
-        "'sudah disetujui' hanya ada di /regenerate. G2."
-    ),
-)
+
 def test_generate_llm_gagal_tidak_merusak_rps_disetujui(client, llm, rps_lengkap):
     rps_id = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
     client.post(f"/api/rps/{rps_id}/approve")
@@ -478,33 +426,18 @@ def test_generate_llm_gagal_tidak_merusak_rps_disetujui(client, llm, rps_lengkap
     assert len(detail["cpmk_list"]) == 3
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: approve menulis skor 100 tanpa memeriksa katalog. Daftar RPS "
-        "menampilkan 'Compliant SN-Dikti' 100 untuk RPS kosong (rps.py:623-625)."
-    ),
-)
 def test_approve_tidak_memalsukan_skor(client):
     rps_id = client.post(
         "/api/rps/", json={"course_name": "K", "course_code": "K1"}
     ).json()["rps_id"]
-    client.post(f"/api/rps/{rps_id}/approve")
+    assert client.post(f"/api/rps/{rps_id}/approve").status_code == 400
+    assert client.get(f"/api/dashboard/rps/{rps_id}").json()["status"] == "draft"
     item = next(
         i for i in client.get("/api/dashboard/rps").json()["items"] if i["id"] == rps_id
     )
     assert item["compliance_score"] < 100
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: _get_or_create_course commit sebelum validasi, jadi POST RPS yang "
-        "ditolak 400 tetap meninggalkan mata kuliah baru (rps.py:517-530)."
-    ),
-)
 def test_rps_ditolak_tidak_meninggalkan_mata_kuliah(client, rps_lengkap):
     rps_lengkap["meetings"][0]["cpmk_number"] = 9
     assert client.post("/api/rps/", json=rps_lengkap).status_code == 400
@@ -607,15 +540,6 @@ def test_hapus_submission_tunggal_dan_semua(
     assert kiriman(quiz_id) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: jumlah submission dihitung sebelum flush dan SessionLocal memakai "
-        "autoflush=False, jadi unggahan pertama selalu mencatat 0 (quiz.py:518-520). "
-        "Halaman kuis menampilkan 'Submission 0/3'."
-    ),
-)
 def test_jumlah_submission_tercatat_setelah_unggah(client, buat_kuis, unggah_jawaban, soal):
     quiz_id = buat_kuis([soal.mcq1])
     body = unggah_jawaban(quiz_id, "NIM,PG-1\n00000001,A\n00000002,B\n").json()
@@ -645,26 +569,14 @@ def test_generate_kuis_dengan_llm_tiruan(client, llm):
     assert set(llm.tasks) == {"simple", "complex"}
 
 
-def test_rekam_generate_kuis_llm_gagal_menyimpan_draft_kosong(client, llm):
+def test_generate_kuis_llm_gagal_tidak_menyimpan_draft(client, llm):
     llm.fail()
-    res = client.post(
-        "/api/quiz/generate",
-        json={"course_id": "c1", "num_questions": 2, "material_content": "Materi"},
-    )
-    assert res.status_code == 200
-    assert res.json()["data"]["questions"] == []
-    kuis = client.get(f"/api/quiz/{res.json()['data']['quiz_id']}").json()
-    assert kuis["details"] == "0 soal | MCQ + Esai"
+    res = client.post("/api/quiz/generate", json={"course_id": "c1", "num_questions": 2, "material_content": "Materi"})
+    assert res.status_code == 503
+    assert client.get("/api/dashboard/quizzes").json()["draft"] == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: LLM gagal tetap menghasilkan 200 'success' dan draft 0 soal "
-        "(quiz.py:71-100). UI menampilkan 'Kuis Berhasil Dibuat'."
-    ),
-)
+
 def test_generate_kuis_llm_gagal_melapor_gagal(client, llm):
     llm.fail()
     res = client.post(
@@ -672,3 +584,152 @@ def test_generate_kuis_llm_gagal_melapor_gagal(client, llm):
         json={"course_id": "c1", "num_questions": 2, "material_content": "Materi"},
     )
     assert res.status_code >= 400
+
+
+def test_generate_gagal_mempertahankan_seluruh_draft(client, llm, rps_lengkap):
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    before = client.get(f"/api/dashboard/rps/{rid}").json()
+    llm.fail()
+    assert _generate(client).status_code == 503
+    assert client.get(f"/api/dashboard/rps/{rid}").json() == before
+
+
+def test_generate_disetujui_ditolak_sebelum_llm(client, llm, rps_lengkap):
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    client.post(f"/api/rps/{rid}/approve")
+    assert _generate(client).status_code == 400
+    assert llm.prompts == []
+
+
+def test_regenerate_gagal_melapor_gagal_dan_tidak_mengubah_rps(client, llm, rps_lengkap):
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    before = client.get(f"/api/dashboard/rps/{rid}").json()
+    llm.fail()
+    assert client.post(f"/api/rps/{rid}/regenerate", json={"feedback": "x"}).status_code == 503
+    assert client.get(f"/api/dashboard/rps/{rid}").json() == before
+
+
+@pytest.mark.parametrize("reply", ["[]", "bukan JSON", '[{"question": "X"}]'])
+def test_generate_kuis_invalid_tidak_disimpan(client, llm, reply):
+    llm.reply(reply)
+    assert client.post("/api/quiz/generate", json={"course_id": "c1", "num_questions": 2}).status_code == 503
+    assert client.get("/api/dashboard/quizzes").json()["draft"] == []
+
+
+def test_approve_memakai_katalog_terkini_dan_menolak_kekurangan(client, rps_lengkap):
+    rps_lengkap["learning_modality"] = ""
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    assert client.post(f"/api/rps/{rid}/approve").status_code == 400
+    item = client.get("/api/dashboard/rps").json()["items"][0]
+    assert item["compliance_score"] == 99
+    assert item["status"] != "compliant"
+
+
+def test_materi_upload_gagal_indeks_dan_ringkasan_jujur(client, rag_palsu):
+    rag_palsu.error = OSError("Indeks mati")
+    res = client.post("/api/materials/upload", data={"course_id": "c1", "title": "X"}, files={"file": ("a.txt", b"isi", "text/plain")})
+    assert res.json()["indexed_chunks"] == 0
+    assert client.get("/api/materials/").json()[0]["status_text"] == "Gagal diindeks"
+    summary = client.get("/api/dashboard/knowledge-base").json()["summary"]
+    assert next(i for i in summary if i["label"] == "Terindeks")["value"] == "0"
+
+
+def test_materi_nol_chunk_bukan_terindeks(client, rag_palsu):
+    rag_palsu.chunks = 0
+    client.post("/api/materials/", json={"course_id": "c1", "title": "X", "content_text": "isi"})
+    assert client.get("/api/materials/").json()[0]["status_text"] == "Gagal diindeks"
+
+
+def test_generate_rps_lengkap_dengan_llm_tiruan(client, llm, rps_lengkap):
+    import json
+
+    llm.reply(lambda prompt: json.dumps(rps_lengkap["meetings"]) if "16 elemen" in prompt else "Tren contoh")
+    form = {k: json.dumps(rps_lengkap[k]) for k in ["cpl_list", "cpmk_list", "references_list", "bahan_kajian", "learning_methods"]}
+    form.update(course_name="Uji", course_code="GEN1", program_study="S2 Uji", learning_modality="Luring")
+    res = client.post("/api/rps/generate", data=form)
+    assert res.status_code == 200, res.text
+    detail = client.get(f"/api/dashboard/rps/{res.json()['data']['rps_id']}").json()
+    assert len(detail["meetings"]) == 16
+    assert detail["cpmk_list"] == rps_lengkap["cpmk_list"]
+    assert detail["summary"][0]["value"] == "100%"
+
+
+@pytest.mark.parametrize("reply", ["[]", '[{"week": 1}]', "bukan json"])
+def test_generate_rps_jadwal_tidak_lengkap_tidak_menimpa(client, llm, rps_lengkap, reply):
+    import json
+
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    before = client.get(f"/api/dashboard/rps/{rid}").json()
+    llm.reply(lambda prompt: reply if "16 elemen" in prompt else "Tren contoh")
+    form = {k: json.dumps(rps_lengkap[k]) for k in ["cpl_list", "cpmk_list", "references_list", "bahan_kajian", "learning_methods"]}
+    form.update(course_name="Uji", course_code="UJ1001")
+    assert client.post("/api/rps/generate", data=form).status_code == 503
+    assert client.get(f"/api/dashboard/rps/{rid}").json() == before
+
+
+def test_csv_teks_bebas_tidak_menjadi_jawaban_palsu(buat_kuis, unggah_jawaban, kiriman, soal):
+    qid = buat_kuis([soal.mcq1])
+    unggah_jawaban(qid, "NIM,PG-1\n1,Tidak tahu\n2,Belum\n3,Jawaban: D\n")
+    assert [s["answers"] for s in kiriman(qid)] == [{}, {}, {"Q001": "D"}]
+
+
+def test_katalog_cache_diperbarui_setelah_edit(client, rps_lengkap):
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    assert client.get(f"/api/rps/{rid}/compliance").json()["score"] == 100
+    rps_lengkap["learning_modality"] = ""
+    client.put(f"/api/rps/{rid}", json=rps_lengkap)
+    assert client.get(f"/api/rps/{rid}/compliance").json()["score"] == 99
+
+
+def test_edit_rps_disetujui_kembali_draft(client, rps_lengkap):
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    client.post(f"/api/rps/{rid}/approve")
+    rps_lengkap["meetings"] = []
+    client.put(f"/api/rps/{rid}", json=rps_lengkap)
+    assert client.get(f"/api/dashboard/rps/{rid}").json()["status"] == "draft"
+    item = client.get("/api/dashboard/rps").json()["items"][0]
+    assert item["status"] != "compliant"
+
+
+def test_ringkasan_materi_terindeks_hanya_setelah_berhasil(client):
+    client.post("/api/materials/", json={"course_id": "c1", "title": "X", "content_text": "Isi"})
+    summary = client.get("/api/dashboard/knowledge-base").json()["summary"]
+    assert next(i for i in summary if i["label"] == "Terindeks")["value"] == "1"
+
+
+def test_status_indeks_lama_tidak_diasumsikan_berhasil(client, db):
+    from app.models.material import Material
+
+    db.add(Material(id="m-lama", course_id="c1", title="Lama", content_text="Isi", status="ready", status_text="Terindeks"))
+    db.commit()
+    assert client.get("/api/materials/").json()[0]["status_text"] == "Belum diverifikasi"
+    data = client.get("/api/dashboard/knowledge-base").json()
+    assert data["materials"][0]["status_text"] == "Belum diverifikasi"
+    assert next(i for i in data["summary"] if i["label"] == "Terindeks")["value"] == "0"
+
+
+def test_generate_gagal_saat_persist_rollback_seluruh_transaksi(client, llm, rps_lengkap, monkeypatch):
+    import json
+    from app.api.v1 import rps as api
+
+    rid = client.post("/api/rps/", json=rps_lengkap).json()["rps_id"]
+    before = client.get(f"/api/dashboard/rps/{rid}").json()
+    llm.reply(lambda prompt: json.dumps(rps_lengkap["meetings"]) if "16 elemen" in prompt else "Tren")
+    form = {k: json.dumps(rps_lengkap[k]) for k in ["cpl_list", "cpmk_list", "references_list", "bahan_kajian", "learning_methods"]}
+    form.update(course_name="Uji", course_code="UJ1001")
+    def fail(*args):
+        raise RuntimeError("Penyimpanan gagal")
+    monkeypatch.setattr(api, "_refresh_compliance", fail)
+    assert client.post("/api/rps/generate", data=form).status_code == 503
+    assert client.get(f"/api/dashboard/rps/{rid}").json() == before
+    form["course_code"] = "ROLLBACK"
+    assert client.post("/api/rps/generate", data=form).status_code == 503
+    assert "ROLLBACK" not in [c["code"] for c in client.get("/api/courses/").json()]
+
+
+def test_graph_materi_gagal_indeks_tidak_ditandai_terindeks(client, rag_palsu):
+    rag_palsu.error = OSError("Indeks mati")
+    mid = client.post("/api/materials/", json={"course_id": "c1", "title": "X", "content_text": "Isi"}).json()["id"]
+    graph = client.get("/api/knowledge/graph").json()
+    node = next(n for n in graph["nodes"] if n["id"] == f"mat-{mid}")
+    assert node["meta"]["indexed"] is False

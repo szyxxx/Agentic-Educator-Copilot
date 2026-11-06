@@ -234,6 +234,23 @@ def answer_key_node(state: QuizState):
 
 def validate_node(state: QuizState):
     print("Validating Quiz Questions...")
+    questions = state.get("generated_questions") or []
+    mcq_count, essay_count = _split_counts(state.get("quiz_type") or "mixed", state.get("num_questions") or 1)
+    if len(questions) != mcq_count + essay_count:
+        raise ValueError("Jumlah soal dari LLM tidak lengkap")
+    if len({q.get("id") for q in questions}) != len(questions) or any(not q.get("id") for q in questions):
+        raise ValueError("ID soal tidak valid")
+    if sum(q.get("type") == "multiple_choice" for q in questions) != mcq_count:
+        raise ValueError("Jenis soal tidak sesuai permintaan")
+    for q in questions:
+        if not str(q.get("question") or "").strip():
+            raise ValueError("Pertanyaan kosong")
+        if q.get("type") == "multiple_choice":
+            options = q.get("options") or {}
+            if any(not options.get(k) for k in "ABCD") or q.get("correct_answer") not in ("A", "B", "C", "D"):
+                raise ValueError("Opsi atau kunci jawaban tidak lengkap")
+        elif not isinstance(q.get("rubric"), dict) or not q["rubric"]:
+            raise ValueError("Rubrik esai kosong")
     return {"validated": True}
 
 

@@ -42,7 +42,7 @@ def fetch_trends_node(state: CurriculumState):
         response = llm.invoke(prompt)
         trend_data = response.content
     except Exception as e:
-        trend_data = f"Gagal mengambil tren: {str(e)}"
+        raise ValueError("Gagal mengambil tren dari LLM") from e
     return {"trend_data": trend_data}
 
 def generate_cpl_cpmk_node(state: CurriculumState):
@@ -123,12 +123,14 @@ def generate_cpl_cpmk_node(state: CurriculumState):
         cpmk_items = parsed.get("cpmk") or []
     except Exception as e:
         print(f"CPL/CPMK JSON parse error: {e}, raw: {raw_response_text[:300]}")
-        cpl_items, cpmk_items = [], []
+        raise ValueError("Gagal membuat CPL/CPMK") from e
 
     # Merge: keep whatever the dosen typed, append AI suggestions for the rest.
     final_cpl = list(user_cpl) if user_cpl else [str(c).strip() for c in cpl_items if c]
     final_cpmk = list(user_cpmk) if user_cpmk else [str(c).strip() for c in cpmk_items if c]
 
+    if not final_cpl or not final_cpmk:
+        raise ValueError("CPL/CPMK kosong")
     combined = [f"CPL:{c}" for c in final_cpl] + [f"CPMK:{c}" for c in final_cpmk]
     return {"cpl_list": combined}
 
@@ -174,7 +176,7 @@ def synthesize_bahan_kajian_node(state: CurriculumState):
         start = text.find("[")
         end = text.rfind("]") + 1
         if start < 0 or end <= start:
-            return {"bahan_kajian": []}
+            raise ValueError("Bahan kajian bukan JSON array")
         parsed = json.loads(text[start:end])
         cleaned = [str(b).strip() for b in parsed if str(b).strip()]
         # De-duplicate while preserving order
@@ -184,10 +186,12 @@ def synthesize_bahan_kajian_node(state: CurriculumState):
             if key not in seen:
                 seen.add(key)
                 out.append(b)
+        if not out:
+            raise ValueError("Bahan kajian kosong")
         return {"bahan_kajian": out[:6]}
     except Exception as e:
         print(f"[rps_agent] bahan_kajian synth failed: {e}")
-        return {"bahan_kajian": []}
+        raise ValueError("Gagal membuat bahan kajian") from e
 
 
 def synthesize_references_node(state: CurriculumState):
@@ -237,7 +241,7 @@ def synthesize_references_node(state: CurriculumState):
         start = text.find("[")
         end = text.rfind("]") + 1
         if start < 0 or end <= start:
-            return {"user_references": []}
+            raise ValueError("Referensi bukan JSON array")
         parsed = json.loads(text[start:end])
         cleaned = [str(r).strip() for r in parsed if str(r).strip() and len(str(r).strip()) > 10]
         seen, out = set(), []
@@ -246,10 +250,12 @@ def synthesize_references_node(state: CurriculumState):
             if key not in seen:
                 seen.add(key)
                 out.append(r)
+        if not out:
+            raise ValueError("Referensi kosong")
         return {"user_references": out[:8]}
     except Exception as e:
         print(f"[rps_agent] references synth failed: {e}")
-        return {"user_references": []}
+        raise ValueError("Gagal membuat referensi") from e
 
 
 def draft_rps_node(state: CurriculumState):
@@ -366,8 +372,7 @@ def draft_rps_node(state: CurriculumState):
             text = text[start:end]
         meetings = json.loads(text)
     except Exception as e:
-        meetings = []
-        print(f"Error parsing JSON from LLM: {str(e)}")
+        raise ValueError("Gagal membuat jadwal RPS") from e
 
     # Coerce each entry against the constraints. The agent intentionally does
     # NOT validate strictly here — that happens in the API layer when the
@@ -439,55 +444,10 @@ def draft_rps_node(state: CurriculumState):
     return {"draft_rps": "JSON generated", "meetings_list": normalized}
 
 def validate_compliance_node(state: CurriculumState):
-    print("Validating Compliance with SN-DIKTI...")
-    llm = get_llm("complex")
-    
-    meetings = state.get("meetings_list", [])
-    import json
-    meetings_str = json.dumps(meetings, indent=2)
-    
-    prompt = f"""
-    Evaluasi rencana pembelajaran (RPS) berikut berdasarkan standar SN-DIKTI (Permendikbudristek No. 53 Tahun 2023 / peraturan terkait).
-    Syarat utama SN-DIKTI:
-    1. Harus ada 16 minggu/pertemuan (termasuk UTS dan UAS).
-    2. Minggu ke-8 harus dialokasikan untuk UTS (Ujian Tengah Semester).
-    3. Minggu ke-16 harus dialokasikan untuk UAS (Ujian Akhir Semester).
-    4. Adanya penjabaran metode pembelajaran dan evaluasi yang jelas.
+    # Compliance is computed from persisted rows by the deterministic catalog.
+    # The LLM must never invent a compliance score.
+    return {"validated_rps": state.get("draft_rps", "")}
 
-    RPS yang akan dievaluasi:
-    {meetings_str}
-
-    Berikan skor kepatuhan (0-100) dan daftar isu jika ada yang tidak sesuai.
-    PENTING: Output HARUS dalam format JSON murni:
-    {{
-        "score": integer (0-100),
-        "issues": ["isu 1", "isu 2"] (kosongkan list jika 100)
-    }}
-    Hanya outputkan JSON.
-    """
-    
-    score = 80.0
-    issues = []
-    
-    try:
-        response = llm.invoke(prompt)
-        text = response.content.replace("```json", "").replace("```", "").strip()
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start >= 0 and end > start:
-            text = text[start:end]
-        
-        parsed = json.loads(text)
-        score = float(parsed.get("score", 80))
-        issues = parsed.get("issues", [])
-    except Exception as e:
-        print(f"Error validating compliance: {str(e)}")
-        
-    return {
-        "validated_rps": state.get("draft_rps", ""),
-        "compliance_score": score,
-        "compliance_issues": issues
-    }
 
 def refine_rps_node(state: CurriculumState):
     print("Refining RPS...")

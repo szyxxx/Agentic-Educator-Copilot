@@ -18,15 +18,21 @@ export async function apiFetch<T = any>(
     headers.set("Content-Type", "application/json");
     body = JSON.stringify(init.json);
   }
-  const res = await fetch(apiUrl(path), {
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
     cache: "no-store",
     ...init,
     headers,
     body,
-  });
+    });
+  } catch {
+    throw new Error("Layanan backend tidak dapat dihubungi. Coba lagi setelah beberapa saat.");
+  }
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${text || res.statusText}`);
+    const payload = await res.json().catch(() => null);
+    const detail = typeof payload?.detail === "string" ? payload.detail : payload?.message;
+    throw new Error(detail || `Layanan gagal memproses permintaan (HTTP ${res.status}). Silakan coba lagi.`);
   }
   // Tolerate empty 204 responses
   const text = await res.text();

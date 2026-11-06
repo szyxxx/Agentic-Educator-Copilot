@@ -192,7 +192,7 @@ def generate_post_quiz_material(
     try:
         from app.core.rag import index_material
 
-        index_material(
+        chunks = index_material(
             content,
             metadata={
                 "material_id": material.id,
@@ -205,8 +205,11 @@ def generate_post_quiz_material(
                 "source_quiz_id": quiz.id,
             },
         )
+        material.status = "indexed" if chunks > 0 else "index_failed"
     except Exception as e:  # pragma: no cover
+        material.status = "index_failed"
         log.info("[auto-material] RAG indexing skipped: %s", e)
+    db.commit()
 
     log.info(
         "[auto-material] generated material %s for course=%s week=%s (avg=%.1f)",

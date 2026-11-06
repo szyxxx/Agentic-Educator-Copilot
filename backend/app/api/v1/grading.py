@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from fastapi.responses import JSONResponse
 from datetime import datetime
 
 from app.agents.grading_agent import build_grading_graph
@@ -45,6 +46,7 @@ def run_auto_grading(quiz_id: str, db: Session = Depends(get_session)):
 
     graph = build_grading_graph()
     scores: list[float] = []
+    failed_count = 0
     weak_topics_pool: list[str] = []
     overall_feedback_pool: list[str] = []
 
@@ -68,34 +70,42 @@ def run_auto_grading(quiz_id: str, db: Session = Depends(get_session)):
             result = graph.invoke(state)
         except Exception as e:
             print(f"[grading] {sub.id} failed: {e}")
+            sub.score = None
+            sub.status = "manual_review"
+            sub.feedback = "Gagal menilai otomatis. Mohon dinilai manual atau jalankan penilaian ulang."
+            failed_count += 1
             continue
 
-        sub.score = float(result.get("total_score") or 0.0)
         sub.feedback = result.get("overall_feedback") or ""
+        if result.get("total_score") is None:
+            sub.score = None
+            sub.status = "manual_review"
+            failed_count += 1
+            continue
+        sub.score = float(result["total_score"])
         sub.status = "graded"
         scores.append(sub.score)
         weak_topics_pool.extend(result.get("weak_topics") or [])
         if sub.feedback:
             overall_feedback_pool.append(sub.feedback)
 
-    if not scores:
-        db.commit()
-        return {
-            "status": "error",
-            "message": "Penilaian gagal untuk semua submission.",
-            "data": {
-                "graded_count": 0,
-                "average_score": 0.0,
-                "weak_topics": [],
-                "overall_feedback": "Cek log server.",
-            },
-        }
-
-    average = round(sum(scores) / len(scores), 1)
-    quiz.progress_percent = 100
-    quiz.status = "attention" if average < 60 else "completed"
+    db.flush()
+    remaining = db.query(Submission).filter(Submission.quiz_id == quiz_id, Submission.score.is_(None)).count()
+    total = db.query(Submission).filter(Submission.quiz_id == quiz_id).count()
+    quiz.progress_percent = min(100, int(round(total / quiz.total_students * 100))) if quiz.total_students else 0
+    stored_scores = [row.score for row in db.query(Submission).filter(Submission.quiz_id == quiz_id, Submission.score.isnot(None)).all()]
+    average = round(sum(stored_scores) / len(stored_scores), 1) if stored_scores else None
+    quiz.status = "active" if remaining else ("attention" if average is not None and average < 60 else "completed")
     quiz.updated_at = datetime.now().strftime("%d %b %Y")
     db.commit()
+
+    if not scores:
+        return JSONResponse(status_code=503, content={
+            "status": "error",
+            "detail": "Penilaian otomatis gagal. Esai perlu penilaian manual atau dinilai ulang; nilai akhir belum ditetapkan.",
+            "message": "Penilaian gagal untuk semua submission.",
+            "data": {"graded_count": 0, "failed_count": failed_count, "average_score": None, "weak_topics": [], "overall_feedback": "Gagal menilai otomatis. Mohon dinilai manual atau ulangi penilaian."},
+        })
 
     # De-dup weak topics, keep most-mentioned first
     from collections import Counter
@@ -107,7 +117,7 @@ def run_auto_grading(quiz_id: str, db: Session = Depends(get_session)):
     auto_material_id: str | None = None
     auto_material_week: int | None = None
     try:
-        material = generate_post_quiz_material(
+        material = None if remaining else generate_post_quiz_material(
             db,
             quiz=quiz,
             average_score=average,
@@ -124,11 +134,15 @@ def run_auto_grading(quiz_id: str, db: Session = Depends(get_session)):
         + (f" Topik terlemah: {', '.join(most_common)}." if most_common else "")
     )
 
+    if failed_count:
+        summary_feedback += f" {failed_count} submission gagal; perlu penilaian manual atau dinilai ulang."
+
     return {
-        "status": "success",
-        "message": "Auto-grading selesai.",
+        "status": "partial" if failed_count else "success",
+        "message": "Sebagian submission perlu penilaian ulang." if failed_count else "Auto-grading selesai.",
         "data": {
             "graded_count": len(scores),
+            "failed_count": failed_count,
             "average_score": average,
             "total_score": average,  # backward compat with current frontend
             "weak_topics": most_common,

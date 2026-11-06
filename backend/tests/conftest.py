@@ -35,6 +35,7 @@ _TEST_DB = _TMP_DIR / "tes.db"
 
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB}"
 os.environ["ENVIRONMENT"] = "test"
+os.environ["CHROMA_PERSIST_DIR"] = str(_TMP_DIR / "chroma")
 os.environ["OPENROUTER_API_KEY"] = ""
 os.environ["ANTHROPIC_API_KEY"] = ""
 os.environ["LLM_PROVIDER_ORDER"] = "ollama"
@@ -165,8 +166,7 @@ def llm(monkeypatch) -> FakeLLM:
 
 @pytest.fixture(autouse=True)
 def rag_palsu(monkeypatch) -> SimpleNamespace:
-    """Cegah Chroma dan model embedding. `CHROMA_PERSIST_DIR` tidak bisa diatur
-    dari env, jadi tanpa ini tes akan menulis `backend/chroma_db`."""
+    """Cegah pemanggilan Chroma/model embedding selama pengujian unit."""
     from app.core import rag
 
     state = SimpleNamespace(indexed=[], chunks=2, error=None)

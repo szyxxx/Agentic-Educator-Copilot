@@ -11,6 +11,8 @@ from app.models.rps_meeting import RPSMeeting
 from app.models.quiz import Quiz
 from app.models.material import Material
 from app.models.student import Student
+from app.models.submission import Submission
+from app.models.rps_finding import RPSFinding
 
 router = APIRouter()
 
@@ -79,8 +81,11 @@ def delete_course(course_id: str, db: Session = Depends(get_session)):
     # Cascade-delete dependents to keep the DB consistent
     rps_ids = [r.id for r in db.query(RPS).filter(RPS.course_id == course_id).all()]
     if rps_ids:
+        db.query(RPSFinding).filter(RPSFinding.rps_id.in_(rps_ids)).delete(synchronize_session=False)
         db.query(RPSMeeting).filter(RPSMeeting.rps_id.in_(rps_ids)).delete(synchronize_session=False)
         db.query(RPS).filter(RPS.id.in_(rps_ids)).delete(synchronize_session=False)
+    quiz_ids = [q.id for q in db.query(Quiz.id).filter(Quiz.course_id == course_id).all()]
+    db.query(Submission).filter(Submission.quiz_id.in_(quiz_ids)).delete(synchronize_session=False)
     db.query(Quiz).filter(Quiz.course_id == course_id).delete()
     db.query(Material).filter(Material.course_id == course_id).delete()
     db.query(Student).filter(Student.course_id == course_id).delete()

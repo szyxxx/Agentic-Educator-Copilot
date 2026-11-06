@@ -186,15 +186,18 @@ def get_rps_list(db: Session = Depends(get_session)):
         course = courses.get(rps.course_id)
         if not course:
             continue
+        meetings = db.query(RPSMeeting).filter(RPSMeeting.rps_id == rps.id).all()
+        report = run_catalog(rps, meetings, course=course)
+        compliant = rps.status == "validated" and all(row.passed for row in report.criteria)
         items.append(
             {
                 "id": rps.id,
                 "course": course.name,
                 "details": f"{course.program_study} | {course.sks} SKS | Smt {course.semester}",
-                "status": "compliant" if rps.status == "validated" else "warning",
-                "status_text": "Compliant SN-Dikti" if rps.status == "validated" else "Perlu Review CPL",
-                "compliance_score": int(rps.compliance_score),
-                "issues_count": rps.issues_count,
+                "status": "compliant" if compliant else "warning",
+                "status_text": "Compliant SN-Dikti" if compliant else "Perlu Review",
+                "compliance_score": report.score,
+                "issues_count": sum(not row.passed for row in report.criteria),
                 "updated_at": rps.updated_at,
             }
         )
@@ -321,12 +324,14 @@ def get_quizzes(db: Session = Depends(get_session)):
     active = [quiz for quiz in quizzes if quiz.status == "active"]
     attention = [quiz for quiz in quizzes if quiz.status == "attention"]
     draft = [quiz for quiz in quizzes if quiz.status == "draft"]
+    completed = [quiz for quiz in quizzes if quiz.status == "completed"]
 
     return {
         "summary": [
             {"label": "Kuis Aktif", "value": str(len(active)), "note": "Sedang berjalan"},
             {"label": "Butuh Review", "value": str(len(attention)), "note": "Nilai rendah"},
             {"label": "Draft", "value": str(len(draft)), "note": "Siap dipublikasikan"},
+            {"label": "Selesai", "value": str(len(completed)), "note": "Kuis ditutup atau selesai dinilai"},
         ],
         "active": [
             {
@@ -340,6 +345,10 @@ def get_quizzes(db: Session = Depends(get_session)):
                 "progress_percent": quiz.progress_percent,
             }
             for quiz in active
+        ],
+        "completed": [
+            {"id": quiz.id, "title": quiz.title, "course": _course_name(db, quiz.course_id), "details": quiz.details}
+            for quiz in completed
         ],
         "needs_attention": [
             {
@@ -366,7 +375,7 @@ def get_analytics(course_id: str | None = None, db: Session = Depends(get_sessio
     course = None
     if course_id:
         course = db.query(Course).filter(Course.id == course_id).first()
-    if not course:
+    else:
         course = db.query(Course).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -521,7 +530,7 @@ def get_courses(db: Session = Depends(get_session)):
 @router.get("/knowledge-base")
 def get_knowledge_base(db: Session = Depends(get_session)):
     materials = db.query(Material).all()
-    indexed_count = sum(1 for m in materials if m.content_text)
+    indexed_count = sum(1 for m in materials if m.status == "indexed")
 
     return {
         "summary": [
@@ -549,7 +558,7 @@ def get_knowledge_base(db: Session = Depends(get_session)):
                 "course_id": material.course_id,
                 "rps_id": material.rps_id,
                 "status": material.status,
-                "status_text": material.status_text,
+                "status_text": "Belum diverifikasi" if material.status != "indexed" and material.status_text == "Terindeks" else material.status_text,
                 "updated_at": material.updated_at,
                 "size": material.size,
             }

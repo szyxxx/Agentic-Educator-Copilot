@@ -71,6 +71,8 @@ def generate_quiz(request: QuizGenerationRequest, db: Session = Depends(get_sess
         result = graph.invoke(initial_state)
         questions = result.get("generated_questions", [])
         answer_key = result.get("answer_key", [])
+        if not result.get("validated") or not questions:
+            raise ValueError("Hasil kuis kosong atau tidak valid")
 
         new_quiz = Quiz(
             id=f"q-{uuid4().hex[:8]}",
@@ -99,7 +101,8 @@ def generate_quiz(request: QuizGenerationRequest, db: Session = Depends(get_sess
         }
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[quiz] generation failed: {e}")
+        raise HTTPException(status_code=503, detail="Pembuatan kuis gagal: layanan AI tidak tersedia atau soal tidak lengkap. Draft tidak disimpan; silakan coba lagi.")
 
 
 @router.post("/")
@@ -370,8 +373,8 @@ def _clean_mcq_answer(value: str) -> Optional[str]:
     text = str(value).strip()
     if not text:
         return None
-    match = re.search(r"[A-Da-d]", text)
-    return match.group(0).upper() if match else None
+    match = re.fullmatch(r"(?:jawaban\s*:\s*)?\(?([A-D])\)?(?:[.)])?", text, re.I)
+    return match.group(1).upper() if match else None
 
 
 @router.get("/{quiz_id}/submissions")
@@ -515,6 +518,7 @@ async def upload_submissions_csv(
         existing_nims.add(nim)
         added += 1
 
+    db.flush()
     total_subs = (
         db.query(Submission).filter(Submission.quiz_id == quiz_id).count()
     )

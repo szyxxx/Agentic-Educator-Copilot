@@ -243,7 +243,22 @@ def _refresh_compliance(db: Session, rps: RPS) -> int:
     )
     report = run_catalog(rps, meetings, course=course)
     rps.compliance_score = float(report.score)
+    rps.issues_count = sum(not row.passed for row in report.criteria)
+    _COMPLIANCE_CACHE.pop(rps.id, None)
     return report.score
+
+
+def _validate_generated_rps(result: dict) -> None:
+    meetings = result.get("meetings_list") or []
+    if not isinstance(meetings, list) or len(meetings) != 16:
+        raise ValueError("RPS harus memiliki 16 pertemuan")
+    if {m.get("week") for m in meetings if isinstance(m, dict)} != set(range(1, 17)):
+        raise ValueError("Jadwal RPS tidak lengkap")
+    if any(not (m.get("sub_topic_title") or m.get("topic") or "").strip() for m in meetings if m.get("week") not in (8, 16)):
+        raise ValueError("Topik pertemuan kosong")
+    outcomes = result.get("cpl_list") or []
+    if not any(str(v).startswith("CPL:") and str(v)[4:].strip() for v in outcomes) or not any(str(v).startswith("CPMK:") and str(v)[5:].strip() for v in outcomes):
+        raise ValueError("CPL/CPMK tidak lengkap")
 
 
 def _get_or_create_course(db: Session, name: str, code: str, sks: int, semester: int, program_study: str) -> Course:
@@ -262,8 +277,7 @@ def _get_or_create_course(db: Session, name: str, code: str, sks: int, semester:
             status_text="On Track",
         )
         db.add(course)
-        db.commit()
-        db.refresh(course)
+        db.flush()
     return course
 
 
@@ -288,6 +302,10 @@ async def generate_rps(
     pdf_file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_session),
 ):
+    existing = db.query(RPS).join(Course, RPS.course_id == Course.id).filter(Course.code == course_code).first()
+    if existing and existing.status == "validated":
+        raise HTTPException(status_code=400, detail="RPS sudah disetujui, tidak bisa diganti dengan generate.")
+
     # Parse user-provided links into both a raw text blob (for the AI) and a clean list (for DB)
     references_text = ""
     user_links_list: List[str] = []
@@ -366,6 +384,7 @@ async def generate_rps(
 
     try:
         result = graph.invoke(initial_state)
+        _validate_generated_rps(result)
         validated_rps = result.get("validated_rps")
         cpl_list_raw = result.get("cpl_list") or []
         trend_data = result.get("trend_data")
@@ -416,6 +435,11 @@ async def generate_rps(
             else:
                 parsed_cpl.append(item)
 
+        parsed_cpl = user_cpl_list or parsed_cpl
+        parsed_cpmk = user_cpmk_list or parsed_cpmk
+        if not parsed_cpl or not parsed_cpmk or not final_bahan_kajian:
+            raise ValueError("CPL, CPMK, atau bahan kajian tidak lengkap")
+
         # Build references list. Authoritative source = whatever the dosen
         # already typed (or whatever the agent synthesized when the dosen
         # left the field empty); we then append agent-suggested references
@@ -429,10 +453,15 @@ async def generate_rps(
                 if not any(p in ref.lower() for p in generic_phrases) and len(ref) > 10:
                     agent_refs.append(ref)
         final_references_list = base_references + agent_refs
+        if not final_references_list:
+            raise ValueError("Referensi tidak lengkap")
 
         # One RPS per course
         rps_obj = db.query(RPS).filter(RPS.course_id == course.id).first()
         if rps_obj:
+            db.refresh(rps_obj)
+            if rps_obj.status == "validated":
+                raise HTTPException(status_code=400, detail="RPS sudah disetujui, tidak bisa diganti dengan generate.")
             rps_obj.status = "draft"
             rps_obj.draft_content = validated_rps
             rps_obj.cpl_list = parsed_cpl
@@ -492,8 +521,7 @@ async def generate_rps(
             fallback_method=", ".join(learning_methods_list) or learning_method_preference,
         )
 
-        db.commit()
-        db.refresh(rps_obj)
+        db.flush()
         _refresh_compliance(db, rps_obj)
         db.commit()
 
@@ -507,13 +535,24 @@ async def generate_rps(
                 "trend_data": trend_data,
             },
         }
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[rps] generation failed: {e}")
+        raise HTTPException(status_code=503, detail="Pembuatan RPS gagal: layanan AI tidak tersedia atau hasilnya tidak lengkap. Data lama tetap tersimpan; silakan coba lagi.")
 
 
 @router.post("/")
 def create_manual_rps(data: RPSPayload, db: Session = Depends(get_session)):
+    _validate_meetings(
+        data.meetings,
+        bahan_kajian_options=data.bahan_kajian or [],
+        cpmk_list_len=len(data.cpmk_list or []),
+        references_list_len=len(data.references_list or []),
+    )
+
     course = _get_or_create_course(
         db,
         data.course_name or "",
@@ -523,15 +562,10 @@ def create_manual_rps(data: RPSPayload, db: Session = Depends(get_session)):
         data.program_study or "",
     )
 
-    _validate_meetings(
-        data.meetings,
-        bahan_kajian_options=data.bahan_kajian or [],
-        cpmk_list_len=len(data.cpmk_list or []),
-        references_list_len=len(data.references_list or []),
-    )
-
     rps_obj = db.query(RPS).filter(RPS.course_id == course.id).first()
     if rps_obj:
+        if rps_obj.status == "validated":
+            raise HTTPException(status_code=400, detail="RPS sudah disetujui, gunakan edit untuk merevisi.")
         rps_obj.status = "draft"
         rps_obj.cpl_list = data.cpl_list
         rps_obj.cpmk_list = data.cpmk_list
@@ -570,7 +604,7 @@ def create_manual_rps(data: RPSPayload, db: Session = Depends(get_session)):
         references_list_len=len(data.references_list or []),
         fallback_method=fallback_method,
     )
-    db.commit()
+    db.flush()
     _refresh_compliance(db, rps_obj)
     db.commit()
     return {"status": "success", "rps_id": rps_obj.id}
@@ -589,6 +623,7 @@ def update_rps(rps_id: str, data: RPSPayload, db: Session = Depends(get_session)
         references_list_len=len(data.references_list or []),
     )
 
+    rps.status = "draft"
     rps.cpl_list = data.cpl_list
     rps.cpmk_list = data.cpmk_list
     rps.references_list = data.references_list
@@ -609,7 +644,7 @@ def update_rps(rps_id: str, data: RPSPayload, db: Session = Depends(get_session)
         references_list_len=len(data.references_list or []),
         fallback_method=fallback_method,
     )
-    db.commit()
+    db.flush()
     _refresh_compliance(db, rps)
     db.commit()
     return {"status": "success"}
@@ -620,11 +655,13 @@ def approve_rps(rps_id: str, db: Session = Depends(get_session)):
     rps = db.query(RPS).filter(RPS.id == rps_id).first()
     if not rps:
         raise HTTPException(status_code=404, detail="RPS not found")
+    score = _refresh_compliance(db, rps)
+    if rps.issues_count:
+        db.commit()
+        raise HTTPException(status_code=400, detail=f"RPS belum memenuhi katalog: {rps.issues_count} kriteria belum terpenuhi (skor {score}%).")
     rps.status = "validated"
-    rps.compliance_score = 100.0
-    rps.issues_count = 0
     db.commit()
-    return {"status": "success"}
+    return {"status": "success", "compliance_score": score}
 
 
 @router.delete("/{rps_id}")
@@ -1240,7 +1277,7 @@ def fill_missing(rps_id: str, db: Session = Depends(get_session)):
             setattr(meeting, field_name, value)
             patched.append({"week": week, "field": field_name, "value": value})
 
-    db.commit()
+    db.flush()
     _refresh_compliance(db, rps)
     db.commit()
 
@@ -1306,6 +1343,7 @@ def regenerate_rps(
 
     try:
         result = graph.invoke(initial_state)
+        _validate_generated_rps(result)
 
         # Reuse the same parsing logic as /generate
         cpl_raw = result.get("cpl_list") or []
@@ -1360,13 +1398,17 @@ def regenerate_rps(
                 references_list_len=len(rps.references_list or []),
                 fallback_method=", ".join(rps.learning_methods or []) or "Ceramah & Diskusi",
             )
-        db.commit()
+        db.flush()
         _refresh_compliance(db, rps)
         db.commit()
         return {"status": "success", "rps_id": rps.id}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[rps] generation failed: {e}")
+        raise HTTPException(status_code=503, detail="Pembuatan RPS gagal: layanan AI tidak tersedia atau hasilnya tidak lengkap. Data lama tetap tersimpan; silakan coba lagi.")
 
 
 class WeekFeedbackPayload(BaseModel):
@@ -1546,6 +1588,10 @@ def regenerate_week(
         rps.updated_at = datetime.now().strftime("%b %Y")
         db.commit()
         return {"status": "success", "meeting": new_meeting}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[rps] generation failed: {e}")
+        raise HTTPException(status_code=503, detail="Pembuatan RPS gagal: layanan AI tidak tersedia atau hasilnya tidak lengkap. Data lama tetap tersimpan; silakan coba lagi.")

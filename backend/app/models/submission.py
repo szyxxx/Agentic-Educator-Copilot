@@ -26,5 +26,5 @@ class Submission(Base):
     feedback = Column(Text, nullable=True)
     status = Column(
         String(50), default="submitted"
-    )  # submitted | graded | unmatched
+    )  # submitted | graded | unmatched | manual_review
     created_at = Column(DateTime, server_default=func.now())

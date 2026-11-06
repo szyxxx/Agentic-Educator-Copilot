@@ -21,7 +21,7 @@ export default async function DashboardOverview() {
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-3">
               <Badge variant="outline" className="border-white/40 text-white/80">
-                ✨ EduCopilot AI Aktif
+                EduCopilot · Asisten dosen berbantuan AI
               </Badge>
               <h1 className="text-3xl font-semibold">
                 {data.educator.name

@@ -145,14 +145,6 @@ def test_pembersih_jawaban_csv(mentah, harapan):
     assert _clean_mcq_answer(mentah) == harapan
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "BUG: _clean_mcq_answer mengambil huruf A-D pertama di mana pun, jadi "
-        "'Tidak tahu' menjadi D dan 'Jawaban: D' menjadi A (quiz.py:366-374)."
-    ),
-)
 @pytest.mark.parametrize(
     "mentah, harapan",
     [("Tidak tahu", None), ("Belum", None), ("Jawaban: D", "D")],

@@ -1,124 +1,107 @@
-# EduCopilot 🎓🤖
+# EduCopilot
 
-**EduCopilot** is a prototype Agentic AI system designed to streamline and enhance higher education curriculum management and the learning process. Powered by **LangGraph**, **FastAPI**, and **Next.js**, it serves as an intelligent assistant for lecturers to automate administrative tasks, validate curriculum standards, and generate actionable insights from student data.
+Prototipe tugas akhir II5003 Applied Artificial Intelligence untuk membantu dosen mengelola RPS, materi, kuis, jawaban mahasiswa, dan analitik kelas. Backend memakai FastAPI, SQLAlchemy/SQLite, dan LangGraph; frontend memakai Next.js, TypeScript, dan Tailwind CSS.
 
----
+## Cakupan saat ini
 
-## 🌟 Key Features
+- RPS dapat dibuat manual atau dengan LLM, diedit, dan diperiksa dengan katalog deterministik berisi 24 kriteria SN-Dikti. Skor katalog adalah pemeriksaan aplikasi, bukan sertifikasi kepatuhan institusi. Persetujuan memerlukan seluruh kriteria terpenuhi. Generasi gagal tidak menimpa RPS lama; RPS disetujui dilindungi dari generate/regenerate.
+- Kuis pilihan ganda dan esai dapat dibuat manual atau dari teks materi yang dipilih dosen. Agen memakai hingga 4.000 karakter teks; pembuatan kuis tidak melakukan pencarian RAG. Soal yang tidak lengkap ditolak sebelum draft disimpan.
+- Jawaban diimpor melalui CSV. Pilihan ganda dinilai secara deterministik; esai dinilai LLM dengan rubrik. Feedback esai disimpan pada submission. Jika penilaian esai gagal, nilai akhir tetap kosong dengan status `manual_review` dan dapat dinilai ulang setelah LLM pulih. Belum ada editor nilai manual.
+- Knowledge Hub menyimpan materi dan menyediakan pencarian RAG melalui ChromaDB. Unggahan PDF, TXT, dan Markdown dapat diekstrak menjadi teks; DOCX belum memiliki ekstraktor. Status terindeks dicatat hanya setelah pengindeksan berhasil. Label indeks lama yang belum terbukti ditampilkan sebagai belum diverifikasi.
+- Setelah penilaian lengkap, aplikasi mencoba membuat materi penguatan untuk minggu berikutnya jika ada RPS. Ini upaya tambahan yang dapat gagal tanpa membatalkan nilai. Tidak ada pencarian web Tavily yang terhubung dan Remedial Agent masih stub yang tidak dipakai alur aplikasi.
+- Dashboard menghitung statistik dari data tersimpan dan menyediakan ekspor PDF analitik. Progres CPMK masih memakai rata-rata kelas, belum hasil pemetaan setiap soal ke CPMK. Tren industri pada generasi RPS berasal dari LLM, bukan pencarian sumber terkini.
 
-EduCopilot provides an end-to-end ecosystem for course management through specialized AI agents:
+## Prasyarat
 
-1. **RPS (Rencana Pembelajaran Semester) Builder**
-   Automatically draft structured syllabuses and course plans based on course descriptions, Learning Outcomes (CPL/CPMK), and weekly topics.
+- Python **3.11 atau lebih baru** dan `uv`.
+- Node.js **20.9 atau lebih baru** dan npm (sesuai kebutuhan Next.js 16).
+- Git. Dependensi backend, terutama PyTorch/model embedding, membutuhkan ruang beberapa GB; lingkungan uji sebelumnya sekitar 5,3 GB untuk `.venv`.
 
-2. **Compliance & Review Engine**
-   Validates the generated or uploaded RPS against 24 strict national higher education standards (SN-Dikti) criteria to ensure administrative and academic compliance.
-
-3. **Knowledge Base (RAG-based)**
-   Upload reference materials (PDFs, docs). The system chunks, embeds, and stores them in ChromaDB to provide precise, context-aware AI responses using Retrieval-Augmented Generation (RAG).
-
-4. **Quiz Generator & Editor**
-   Generate contextual quizzes (Multiple Choice and Essay) based on RPS materials and Bloom's Taxonomy. Includes a built-in draft editor and dynamic CSV template generation for student submissions.
-
-5. **AI Auto-Grading**
-   Automatically grade student submissions (especially essays) based on predefined rubrics. It provides detailed, personalized feedback for each student.
-
-6. **Remedial & Auto-Material Generation**
-   Analyzes grading results to identify weak topics across the class and automatically generates targeted supplementary learning materials and remedial recommendations.
-
-7. **Dashboard & Analytics**
-   Get a bird's-eye view of course performance, student progress, quiz statistics, and RPS compliance ratios.
-
----
-
-## 🏗️ Architecture
-
-The system follows a modern decoupled architecture:
-
-- **Frontend (Presentation Layer)**: Built with **Next.js**, **TypeScript**, and **Tailwind CSS**. Provides a responsive, dashboard-driven UI for lecturers.
-- **Backend API Layer**: Powered by **FastAPI** (Python). Handles routing, business logic, and communication between the frontend and the AI layer.
-- **Agentic AI Layer**: Uses **LangGraph** to orchestrate goal-driven agents (RPS Agent, Quiz Agent, Grading Agent, etc.) that perform multi-step reasoning. Uses Anthropic's LLM API.
-- **Data & Tools Layer**: 
-  - **Relational Data**: SQLite (`educopilot.db`) via SQLAlchemy ORM.
-  - **Vector Database**: ChromaDB (for document embeddings).
-  - **Search Tool**: Tavily Search integration for external information gathering.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- **Node.js** (v18+ recommended)
-- **Python** (v3.10+ recommended)
-- **uv** (ast Python package installer and resolver)
-- **Git**
-
-### 1. Clone the Repository
+## Pemasangan lokal
 
 ```bash
 git clone https://github.com/szyxxx/Agentic-Educator-Copilot.git
-cd Agentic-Educator-Copilot/app
+cd Agentic-Educator-Copilot
 ```
 
-### 2. Backend Setup
+Perintah berikut dimulai dari akar repo. Untuk memakai checkout yang sudah ada, langsung masuk ke folder repo tersebut.
 
-The backend relies on FastAPI and `uv` for dependency management.
+### Backend tanpa LLM berbayar
 
 ```bash
 cd backend
+uv sync --locked
+cp .env.example .env
 
-# Create a virtual environment and install dependencies
-uv venv
-uv pip install -r requirements.txt
+# Pakai salinan agar DB contoh yang dilacak Git tidak berubah.
+cp educopilot.db /tmp/educopilot-demo.db
+export DATABASE_URL=sqlite:////tmp/educopilot-demo.db
+export CHROMA_PERSIST_DIR=/tmp/educopilot-demo-chroma
+export OPENROUTER_API_KEY=
+export ANTHROPIC_API_KEY=
+export LLM_PROVIDER_ORDER=ollama
+export OLLAMA_BASE_URL=http://127.0.0.1:9
+export HF_HUB_OFFLINE=1
 
-# Configure Environment Variables
-# Create a .env file based on the provided .env.example (if available)
-# Make sure to add your ANTHROPIC_API_KEY
-echo "ANTHROPIC_API_KEY=your_api_key_here" > .env
-
-# Run the development server
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
-*The backend API will be available at `http://localhost:8000`*
 
-### 3. Frontend Setup
+API tersedia di `http://127.0.0.1:8000/docs`. Port 9 di atas sengaja tidak menyediakan LLM: alur manual, katalog kepatuhan, pilihan ganda, dan analitik tetap dapat dicoba. Generasi AI dan penilaian esai akan melaporkan kegagalan yang dapat dicoba ulang. Pengindeksan/pencarian RAG dapat gagal jika model embedding belum ada di cache.
 
-The frontend is a Next.js application.
+`uv sync` memasang dependensi runtime dan grup dev (`pytest`, `httpx`); gunakan `uv sync --locked --no-dev` jika tidak membutuhkan alat uji. `backend/pyproject.toml` dan `uv.lock` adalah sumber pemasangan utama. `requirements.txt` mencantumkan dependensi runtime yang sama untuk pengguna pip; paket yang terkunci untuk pemasangan berulang ada di `uv.lock`.
+
+Konfigurasi dibaca dari environment, lalu `.env` di folder backend jika tersedia. Environment menang atas `.env`. Tanpa `DATABASE_URL`, SQLite menggunakan `educopilot.db` relatif terhadap direktori kerja. DB baru akan dibuat dan diisi data contoh saat startup bila file belum ada; gunakan path salinan di atas untuk pengujian.
+
+### Frontend
+
+Di terminal kedua, mulai dari akar repo:
 
 ```bash
 cd frontend
-
-# Install dependencies
-npm install
-
-# Run the development server
+npm ci
 npm run dev
 ```
-*The frontend application will be available at `http://localhost:3000`*
 
----
+Buka **`http://localhost:3000/dashboard`**. Gunakan host `localhost` karena CORS backend mengizinkan origin tersebut. Frontend mengakses backend `http://127.0.0.1:8000` secara bawaan. Jika alamat backend berbeda, atur `NEXT_PUBLIC_API_BASE` sebelum `npm run dev` atau sebelum build.
 
-## 🧠 AI Agents in EduCopilot
+Untuk menjalankan hasil build:
 
-EduCopilot utilizes a Multi-Agent architecture where each agent has a specific domain of responsibility:
+```bash
+npm run build
+npm run start
+```
 
-- **RPS Agent**: Formulates initial drafts of the semester learning plan.
-- **RPS Review Agent**: Runs the compliance engine to find missing elements in the RPS.
-- **Quiz Agent**: Uses RAG to generate relevant quiz questions and rubrics.
-- **Grading Agent**: Evaluates student answers against rubrics and provides personalized feedback.
-- **Remedial Agent**: Analyzes overall scores to recommend actions for underperforming students.
-- **Auto Material Agent**: Searches or generates new supplementary materials based on class weaknesses.
+Hentikan server dengan `Ctrl+C` pada masing-masing terminal.
 
----
+## Mengaktifkan LLM dan RAG
 
-## 🔒 Privacy & Limitations
+Urutan bawaan `LLM_PROVIDER_ORDER` adalah `openrouter,anthropic,ollama`. Kode memilih penyedia pertama yang memiliki konfigurasi; ini **bukan perpindahan otomatis ketika panggilan penyedia gagal**. Lihat `backend/.env.example` untuk nama variabel kunci, model, dan alamat layanan. Jangan menyimpan kunci API di Git.
 
-- **Decision Support System**: EduCopilot is designed to *assist* lecturers, not replace them. All generated RPS, quizzes, and grades should be reviewed by a human before final publication.
-- **Data Privacy**: Ensure that sensitive student data is anonymized before using the AI auto-grading features, as data is processed by external LLMs (Anthropic).
+Untuk Ollama lokal yang sudah menyediakan model, ubah `OLLAMA_BASE_URL` ke layanan tersebut (bawaan `http://localhost:11434`) dan sesuaikan `OLLAMA_MODEL` (bawaan `gemma3:4b`). OpenRouter dan Anthropic memerlukan kredensial masing-masing dan dapat menimbulkan biaya.
 
----
+RAG memakai `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. Pemakaian pertama memerlukan unduhan model Hugging Face dan jaringan, atau cache model yang sudah lengkap. Lepaskan `HF_HUB_OFFLINE=1` jika ingin mengunduh. `CHROMA_PERSIST_DIR` dapat diatur melalui environment; bawaan lokasinya `backend/chroma_db`.
 
-## 📝 License
+## Pengujian
 
-This project was developed as a Final Project for the II5003 Applied Artificial Intelligence course. All rights reserved.
+```bash
+cd backend
+uv run pytest
+```
+
+Tes memakai DB sementara, LLM/RAG tiruan, memblokir jaringan, dan memeriksa hash DB repo. Tes ini memeriksa perilaku aplikasi; mutu keluaran model sungguhan dan keberhasilan embedding sungguhan memerlukan pengujian terpisah.
+
+Dari akar repo, build frontend:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+## Batas penggunaan
+
+Prototipe belum menyediakan autentikasi, pembatasan peran, audit log, backup otomatis, maupun alur persetujuan nilai oleh manusia. Gunakan data sintetis/anonim untuk uji lokal. Jawaban esai dikirim ke penyedia LLM yang dipilih; jangan masukkan data sensitif tanpa penilaian dan izin yang sesuai. RPS, soal, referensi, dan feedback yang dihasilkan perlu diperiksa dosen; aplikasi belum membuktikan kualitas pedagogis atau efektivitas remedialnya.
+
+## Lisensi
+
+Berkas [LICENSE](LICENSE) memuat **GNU Affero General Public License versi 3 (AGPLv3)**. Ketentuan penggunaan, perubahan, distribusi, interaksi melalui jaringan, dan penyangkalan jaminan mengikuti berkas tersebut.
