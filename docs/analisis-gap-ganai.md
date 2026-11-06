@@ -93,26 +93,26 @@ Klaim yang keliru ini penting karena aturan bukti panduan. Jika README dikutip s
 | rps | 2 | Hasil pakai aplikasi, keduanya `validated` |
 | rps_meetings | 32 | 16 per RPS |
 | rps_findings | 0 | Tidak ada jejak Review Agent |
-| materials | 4 | 2 PDF kuliah yang diunggah, 2 hasil LLM (`AUTO`) |
+| materials | 4 | 2 materi teks sintetis (`TXT`, pengganti PDF kuliah), 2 hasil LLM (`AUTO`) |
 | quizzes | 2 | Satu per mata kuliah |
 | students | 3 | Seed (`backend/app/seed.py:95-99`) |
 | submissions | 6 | Dari 3 NIM yang sama |
 | settings | 10 | Seed (`backend/app/seed.py:15-26`) |
 
-**Kesimpulan: seed dan uji coba manual, bukan data operasional.** Tidak bisa dipakai sebagai bukti kondisi nyata maupun evaluasi model.
+**Kesimpulan: seed dan uji coba manual, bukan data operasional.** Tidak bisa dipakai sebagai bukti kondisi nyata maupun evaluasi model. Nama, NIM, dan isi dua materi PDF di DB kini sintetis.
 
 - Tiga jawaban esai kuis II5005 identik (hash sama), semuanya bernilai 61,7.
 - Semua submission per kuis tercatat pada detik yang sama, yaitu hasil satu kali unggah CSV.
 - Hanya ada satu kuis per mata kuliah, sehingga tren dan efek remedial tidak bisa dihitung.
 - 9 dari 10 kunci jawaban kuis II5003 adalah "B", sinyal mutu soal LLM. Label kuis menyebut "MCQ + Esai" padahal 10 soalnya MCQ.
-- Nama roster seed sama dengan penulis commit `f81f25f`, sehingga roster tampaknya anggota tim sendiri. Perlu konfirmasi pengguna.
+- Roster seed kini sintetis (`Mahasiswa 01` sampai `Mahasiswa 03`), jadi tidak lagi memuat nama orang. Keanggotaan tim tetap perlu konfirmasi pengguna (K4).
 - `courses.status` tetap "On Track" walau rata-rata 23,3, karena tidak pernah diperbarui (`backend/app/core/stats.py:269-285`, `backend/app/seed.py:78-79`).
 - `quizzes.submissions` bernilai 0 padahal tiap kuis punya 3 baris submission.
 - Folder `chroma_db` tidak ada, jadi indeks RAG tidak ikut di repo (`backend/app/core/rag.py:7`).
 
 Hasil eksekusi katalog pada salinan DB: kedua RPS memperoleh 100 (bobot 250 dari 250, 102 baris penilaian, 0 gagal). Jadi skor 100 yang tersimpan cocok. Katalog hanya memeriksa kelengkapan struktur, bukan mutu pengajaran. Perlu diingat pula `approve_rps` menulis 100 tanpa memeriksa apa pun (`backend/app/api/v1/rps.py:623-625`), dan nilainya baru dihitung ulang saat halaman detail dibuka (`backend/app/api/v1/dashboard.py:232-236`).
 
-Privasi: NIM dan nama asli ada di file yang dilacak git (`backend/app/seed.py:96-98`, juga `backend/educopilot.db`). Paket akhir ke Living Lab harus dianonimkan dulu.
+Privasi: nama dan NIM di `backend/app/seed.py:96-98` dan `backend/educopilot.db` kini sintetis, begitu juga isi dua materi PDF di DB. Riwayat git masih menyimpan versi lama, jadi paket akhir ke Living Lab harus memakai kondisi terbaru tanpa riwayat itu.
 
 ### 3.3 Lima siklus smart system
 
@@ -398,8 +398,8 @@ Kolom bukti berisi titik yang bisa dirujuk untuk mengisi tabel. Penentuan LP nya
 | T7-02 | Demo prototipe | SEBAGIAN | Aplikasi ada, tetapi tidak dijalankan pada analisis ini. `backend/requirements.txt:1` tidak memuat beberapa paket yang ada di `backend/pyproject.toml:17` | Uji jalan penuh, data demo anonim |
 | T7-03 | Jawaban atas pertanyaan penguji | SEBAGIAN | Bagian 3 dan 7 dokumen ini | Hasil lapangan |
 | T7-04 | Paket akhir: seluruh artefak | BUTUH LAPANGAN | Belum ada | Bergantung seluruh tahap |
-| T7-05 | Paket akhir: kode | SEBAGIAN | Repo ada | Anonimisasi, bersihkan `__pycache__` yang terlacak, perbaiki README |
-| T7-06 | Paket akhir: data uji | BUTUH BANGUN | Hanya data uji coba dengan nama asli (`backend/app/seed.py:96-98`) | Data uji anonim dan terdokumentasi |
+| T7-05 | Paket akhir: kode | SEBAGIAN | Repo ada. Data sudah dianonimkan dan `__pycache__` tidak lagi dilacak | Perbaiki README, putuskan penanganan riwayat git |
+| T7-06 | Paket akhir: data uji | BUTUH BANGUN | Data uji kini sintetis (`backend/app/seed.py:96-98`) | Dokumentasikan data uji |
 | T7-07 | Paket akhir: presentasi | BUTUH LAPANGAN | Belum ada | Bergantung T7-01 |
 | T7-08 | Checklist: cerita utuh, demo berjalan, repo lengkap | BUTUH LAPANGAN | Belum ada | Bergantung seluruh tahap |
 
@@ -504,7 +504,7 @@ Urutan besar: keputusan, lapangan buta, definisi masalah, desain dan metrik, ban
 
 | ID | Pekerjaan | Bergantung pada | Kapan |
 |---|---|---|---|
-| A1 | Anonimkan DB dan seed, buang `__pycache__` terlacak | K4 | Sekarang |
+| A1 | Anonimkan DB dan seed, buang `__pycache__` terlacak | K4 | Selesai, kecuali riwayat git |
 | A2 | Selaraskan README dengan kode (bagian 3.1) dan samakan daftar dependensi | Tidak ada | Sekarang |
 | A3 | Uji jalan penuh aplikasi tanpa LLM berbayar, sebagai persiapan demo | Tidak ada | Sekarang |
 | A4 | Alat uji: pytest dan LLM tiruan, tes jalur inti | Tidak ada | Sekarang |
