@@ -4,3 +4,7 @@
 *.sqlite3
 *.bin
 .env
+
+# Python bytecode
+__pycache__/
+*.py[cod]
