@@ -1,5 +1,6 @@
 "use client";
 
+import { useIdentity } from "@/components/SessionProvider";
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -22,6 +23,7 @@ export default function QuizDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
+  const canWrite=useIdentity()?.role !== "penjamin_mutu";
   const resolved = use(params);
   const quizId = resolved.id;
 
@@ -103,7 +105,7 @@ export default function QuizDetailPage({
   // Use live gradingResult (from just-run grading) or fall back to derived data
   const showGradingPanel = !!gradingResult || hasGradedData;
 
-  const isGradable = quiz.status === "active" || quiz.status === "completed" || quiz.status === "attention";
+  const isGradable = quiz.status === "active" || quiz.status === "completed" || quiz.status === "attention" || quiz.status === "review";
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -126,9 +128,8 @@ export default function QuizDetailPage({
                 <Button variant="outline" className="mr-2">Edit</Button>
               </Link>
               <Button
-                onClick={publish}
-                disabled={loading}
-                className="bg-teal-600 hover:bg-teal-700"
+                disabled={!canWrite || loading} onClick={publish}
+                                className="bg-teal-600 hover:bg-teal-700"
               >
                 {loading ? "Memproses..." : "Publikasi"}
               </Button>
@@ -213,6 +214,7 @@ export default function QuizDetailPage({
       </Card>
 
       <Submissions
+        questions={quiz.questions ?? []}
         quizId={quizId}
         list={submissions}
         onChange={async () => {
@@ -241,7 +243,7 @@ export default function QuizDetailPage({
         <CardContent className="space-y-4">
           <Button
             onClick={runGrading}
-            disabled={grading || quiz.status === "draft"}
+            disabled={!canWrite || grading || quiz.status === "draft"}
             className="bg-teal-600 hover:bg-teal-700"
           >
             {grading
@@ -254,6 +256,7 @@ export default function QuizDetailPage({
           </Button>
 
           {gradingError && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">{gradingError}</p>}
+          {submissions.some(s => s.status === "needs_review") && <p role="status" className="text-sm text-amber-800">Usulan nilai LLM menunggu tinjauan dosen. Buka “Tinjau nilai esai” pada tabel submission untuk mengubah atau menyetujui skor.</p>}
           {submissions.some(s => s.status === "manual_review") && <p role="status" className="text-sm text-amber-800">Ada esai yang belum berhasil dinilai. Nilai akhir belum tersedia. Periksa feedback pada tabel submission atau jalankan ulang penilaian.</p>}
           {/* Summary panel — from live run OR derived from stored submissions */}
           {showGradingPanel && (

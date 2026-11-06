@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { apiFetch, apiUrl } from "@/lib/api";
 
 type Material = {
+  status: string;
   id: string;
   title: string;
   type: string;
@@ -40,7 +41,7 @@ export function KnowledgeMaterialPicker({ courseId, onUseMaterial }: Props) {
     try {
       const qs = courseId ? `?course_id=${courseId}` : "";
       const data = await apiFetch<Material[]>(`/api/materials/${qs}`);
-      setMaterials(data);
+      setMaterials(data.filter(m => m.status === "ready"));
       // Drop previously picked items that no longer match the course
       setPicked((prev) => {
         const valid = new Set(data.map((m) => m.id));

@@ -11,26 +11,26 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 async function publishQuiz(formData: FormData) {
   "use server";
   const id = formData.get("id") as string;
-  await fetch(apiUrl(`/api/quiz/publish/${id}`), { method: "POST" });
+  await apiFetch(`/api/quiz/publish/${id}`, { method: "POST" });
   revalidatePath("/dashboard/quiz");
 }
 
 async function closeQuiz(formData: FormData) {
   "use server";
   const id = formData.get("id") as string;
-  await fetch(apiUrl(`/api/quiz/close/${id}`), { method: "POST" });
+  await apiFetch(`/api/quiz/close/${id}`, { method: "POST" });
   revalidatePath("/dashboard/quiz");
 }
 
 async function deleteQuiz(formData: FormData) {
   "use server";
   const id = formData.get("id") as string;
-  await fetch(apiUrl(`/api/quiz/${id}`), { method: "DELETE" });
+  await apiFetch(`/api/quiz/${id}`, { method: "DELETE" });
   revalidatePath("/dashboard/quiz");
 }
 

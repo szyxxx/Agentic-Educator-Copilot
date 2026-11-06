@@ -1,5 +1,7 @@
 "use client";
 
+import GradeReview from "./GradeReview";
+import { useIdentity } from "@/components/SessionProvider";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -19,9 +21,12 @@ export type Submission = {
   name: string;
   answered_count: number;
   answers: Record<string, string>;
-  status: "submitted" | "graded" | "unmatched" | "manual_review";
+  status: "submitted" | "graded" | "unmatched" | "manual_review" | "needs_review";
   score: number | null;
   feedback: string | null;
+  version: number; proposed_score: number | null; grading_model: string | null;
+  review_note: string | null; reviewed_by: string | null; reviewed_at: string | null;
+  question_scores: {id:string;type:string;score:number|null;max_score:number;feedback:string;source:string}[] | null;
 };
 
 type UploadReport = {
@@ -35,11 +40,13 @@ type UploadReport = {
 
 type Props = {
   quizId: string;
+  questions: any[];
   list: Submission[];
   onChange: () => Promise<void>;
 };
 
-export default function Submissions({ quizId, list, onChange }: Props) {
+export default function Submissions({ quizId, questions, list, onChange }: Props) {
+  const canWrite = useIdentity()?.role !== "penjamin_mutu";
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [report, setReport] = useState<UploadReport | null>(null);
@@ -126,12 +133,12 @@ export default function Submissions({ quizId, list, onChange }: Props) {
               ⬇ Template CSV
             </Button>
             <Button
+              disabled={!canWrite || uploading}
               onClick={() => fileInput.current?.click()}
-              disabled={uploading}
             >
               {uploading ? "Memproses CSV..." : "📄 Upload CSV"}
             </Button>
-            {list.length > 0 && (
+            {canWrite && list.length > 0 && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -222,6 +229,7 @@ export default function Submissions({ quizId, list, onChange }: Props) {
                     </td>
                     <td className="py-2 pr-3 text-slate-800">
                       {s.name}
+                      <GradeReview key={`${s.id}-${s.version}`} submission={s} questions={questions} onChange={onChange} />
                       {s.feedback && (
                         <details className="mt-1 max-w-prose whitespace-normal text-sm text-slate-600">
                           <summary className="cursor-pointer">Lihat feedback</summary>
@@ -235,7 +243,7 @@ export default function Submissions({ quizId, list, onChange }: Props) {
                     <td className="py-2 pr-3">
                       {s.status === "graded" ? (
                         <Badge variant="success">Dinilai</Badge>
-                      ) : s.status === "manual_review" ? (
+                      ) : s.status === "needs_review" ? (<Badge variant="warning">Menunggu tinjauan dosen</Badge>) : s.status === "manual_review" ? (
                         <Badge variant="warning">Perlu penilaian manual / ulang</Badge>
                       ) : s.status === "unmatched" ? (
                         <Badge variant="warning">Tidak Cocok</Badge>
@@ -253,9 +261,11 @@ export default function Submissions({ quizId, list, onChange }: Props) {
                     </td>
                     <td className="py-2 pr-3 text-slate-700">
                       {s.score == null ? "—" : s.score.toFixed(1)}
+                      {s.score == null && s.proposed_score != null && <p className="text-xs text-amber-700">Usulan {s.proposed_score.toFixed(1)}</p>}
                     </td>
                     <td className="py-2 text-right">
                       <button
+                        disabled={!canWrite}
                         onClick={() => handleDelete(s.id, s.nim)}
                         className="text-rose-500 hover:underline text-xs"
                       >

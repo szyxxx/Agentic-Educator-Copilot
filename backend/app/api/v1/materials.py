@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
+from app.core.access import current_user
 
 from app.core.database import get_session
 from app.models.material import Material
@@ -27,7 +28,7 @@ class MaterialPayload(BaseModel):
 
 def _index_in_rag(material: Material) -> int:
     """Best-effort index into Chroma. Errors are swallowed so DB save still succeeds."""
-    if not material.content_text:
+    if material.status != "ready" or not material.content_text:
         return 0
     try:
         from app.core.rag import index_material
@@ -80,7 +81,10 @@ def list_materials(
             "course_id": m.course_id,
             "rps_id": m.rps_id,
             "status": m.status,
-            "status_text": "Belum diverifikasi" if m.status != "indexed" and m.status_text == "Terindeks" else m.status_text,
+            "status_text": "Belum diverifikasi" if m.index_status != "indexed" and m.status_text == "Terindeks" else m.status_text,
+            "index_status": m.index_status, "version": m.version,
+            "approved_by": m.approved_by, "approved_at": m.approved_at,
+            "generation_model": m.generation_model,
             "size": m.size,
             "updated_at": m.updated_at,
             "has_content": bool(m.content_text),
@@ -107,10 +111,13 @@ def create_material(data: MaterialPayload, db: Session = Depends(get_session)):
         updated_at=datetime.now().strftime("%d %b %Y"),
         size=data.size,
     )
+    if (material.material_type or "").upper() == "AUTO":
+        material.status = "pending_review"
+        material.status_text = "Menunggu persetujuan"
     _save(db, material)
     chunks = _index_in_rag(material)
-    if material.content_text:
-        material.status = "indexed" if chunks > 0 else "index_failed"
+    if material.content_text and material.status == "ready":
+        material.index_status = "indexed" if chunks > 0 else "index_failed"
         material.status_text = "Terindeks" if chunks > 0 else "Gagal diindeks"
         db.commit()
     return {
@@ -179,10 +186,13 @@ async def upload_material(
         updated_at=datetime.now().strftime("%d %b %Y"),
         size=size_label,
     )
+    if (material.material_type or "").upper() == "AUTO":
+        material.status = "pending_review"
+        material.status_text = "Menunggu persetujuan"
     _save(db, material)
     chunks = _index_in_rag(material)
-    if material.content_text:
-        material.status = "indexed" if chunks > 0 else "index_failed"
+    if material.content_text and material.status == "ready":
+        material.index_status = "indexed" if chunks > 0 else "index_failed"
         material.status_text = "Terindeks" if chunks > 0 else "Gagal diindeks"
         db.commit()
     return {
@@ -251,3 +261,31 @@ def delete_material(material_id: str, db: Session = Depends(get_session)):
     db.delete(material)
     db.commit()
     return {"status": "success"}
+
+
+class MaterialApproval(BaseModel):
+    version: int
+
+
+@router.post("/{material_id}/approve")
+def approve_material(material_id: str, payload: MaterialApproval, db: Session = Depends(get_session), user=Depends(current_user)):
+    if user.role not in ("admin", "dosen", "penjamin_mutu"):
+        raise HTTPException(status_code=403, detail="Peran tidak boleh menyetujui materi.")
+    material = db.query(Material).filter(Material.id == material_id).first()
+    if not material:
+        raise HTTPException(status_code=404, detail="Materi tidak ditemukan.")
+    if material.status != "pending_review" or material.version != payload.version:
+        raise HTTPException(status_code=409, detail="Versi berubah atau materi sudah disetujui.")
+    if not (material.content_text or "").strip():
+        raise HTTPException(status_code=400, detail="Materi kosong tidak dapat disetujui.")
+    changed = db.query(Material).filter(Material.id == material_id, Material.version == payload.version, Material.status == "pending_review").update({"status": "ready", "status_text": "Disetujui", "approved_by": user.id, "approved_at": datetime.now(timezone.utc).isoformat(), "version": payload.version + 1}, synchronize_session=False)
+    if changed != 1:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Versi berubah. Muat ulang materi.")
+    db.commit()
+    db.refresh(material)
+    chunks = _index_in_rag(material)
+    material.index_status = "indexed" if chunks > 0 else "index_failed"
+    material.status_text = "Disetujui · Terindeks" if chunks > 0 else "Disetujui · Gagal diindeks"
+    db.commit()
+    return {"status": "ready", "version": material.version, "indexed_chunks": chunks, "index_status": material.index_status}

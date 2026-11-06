@@ -65,6 +65,10 @@ def test_overview_menghitung_dari_data(client, llm, kuis_campuran):
     llm.reply('[{"id": "Q003", "score": 30}]')
     client.post(f"/api/grading/run/{kuis_campuran}")
 
+    assert nilai("Perlu Dinilai") == "1"
+    [sub] = client.get(f"/api/quiz/{kuis_campuran}/submissions").json()
+    assert sub["score"] is None
+    assert client.post(f"/api/grading/submissions/{sub['id']}/approve", json={"version": sub["version"]}).status_code == 200
     assert nilai("Perlu Dinilai") == "0"
     assert nilai("Rata-rata Nilai") == "100.0"
 
@@ -299,6 +303,7 @@ def test_status_materi_jujur_saat_indeks_gagal(client, rag_palsu):
 
 
 def test_pencarian_rag_gagal_memberi_galat(client, rag_palsu):
+    client.post("/api/materials/", json={"course_id":"c1","title":"Materi layak","content_text":"Isi"})
     rag_palsu.error = OSError("Chroma tidak tersedia")
     res = client.post("/api/knowledge/query", json={"query": "regresi"})
     assert res.status_code == 503

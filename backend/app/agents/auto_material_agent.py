@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.core.llm import get_llm
+from app.core.llm import get_llm, describe_model
 from app.models.course import Course
 from app.models.material import Material
 from app.models.quiz import Quiz
@@ -179,8 +179,11 @@ def generate_post_quiz_material(
         content_text=content,
         week=next_week,
         cpmk=cpmk_label[:50],
-        status="ready",
-        status_text="Auto-Generated",
+        status="pending_review",
+        status_text="Menunggu persetujuan",
+        index_status="not_indexed",
+        generation_model=describe_model(llm),
+        source_quiz_id=quiz.id,
         updated_at=datetime.now().strftime("%d %b %Y"),
         size=f"{max(1, len(content) // 1024)} KB",
     )
@@ -188,28 +191,7 @@ def generate_post_quiz_material(
     db.commit()
     db.refresh(material)
 
-    # RAG indexing is best-effort — never block the grading pipeline on it.
-    try:
-        from app.core.rag import index_material
-
-        chunks = index_material(
-            content,
-            metadata={
-                "material_id": material.id,
-                "course_id": material.course_id or "",
-                "rps_id": material.rps_id or "",
-                "week": material.week or 0,
-                "title": material.title,
-                "type": material.material_type,
-                "auto": True,
-                "source_quiz_id": quiz.id,
-            },
-        )
-        material.status = "indexed" if chunks > 0 else "index_failed"
-    except Exception as e:  # pragma: no cover
-        material.status = "index_failed"
-        log.info("[auto-material] RAG indexing skipped: %s", e)
-    db.commit()
+    # Human approval is required before this draft is indexed or published.
 
     log.info(
         "[auto-material] generated material %s for course=%s week=%s (avg=%.1f)",

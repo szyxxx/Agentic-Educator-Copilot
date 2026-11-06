@@ -141,6 +141,7 @@ def get_llm(task: TaskKind = "complex") -> BaseChatModel:
         llm = builder(task)
         if llm is not None:
             log.info("[llm] using provider=%s task=%s", name, task)
+            describe_model(llm)
             return llm
         tried.append(name)
 
@@ -150,3 +151,11 @@ def get_llm(task: TaskKind = "complex") -> BaseChatModel:
         + ". Set at least one of OPENROUTER_API_KEY / ANTHROPIC_API_KEY, "
         "or run a local Ollama server."
     )
+
+
+def describe_model(model) -> str:
+    name = getattr(model, "model", None) or getattr(model, "model_name", None) or type(model).__name__
+    value = f"{getattr(model, '_llm_type', type(model).__name__)}:{name}"
+    from app.core.audit import model_used
+    model_used(value)
+    return value

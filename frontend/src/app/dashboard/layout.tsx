@@ -1,9 +1,10 @@
+import { SessionProvider, SessionMenu, type Identity } from "@/components/SessionProvider";
 import Link from "next/link";
 import { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 // Dashboard data depends on the live API; do not prerender it during build.
 export const dynamic = "force-dynamic";
@@ -19,6 +20,10 @@ const navItems = [
 ];
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
+  const user = await apiFetch<Identity>("/api/auth/me");
+  const visibleNav = navItems.filter(item => item.href !== "/dashboard/settings" || user.role === "admin");
+  if (user.role === "admin") visibleNav.push({href:"/dashboard/accounts",label:"Akun & Penugasan",icon:"👤"});
+  if (user.role !== "dosen") visibleNav.push({href:"/dashboard/audit",label:"Jejak Audit",icon:"📋"});
   let activeClassesCount: number | null = null;
   try {
     const data = await apiFetch<any>("/api/dashboard/overview");
@@ -35,7 +40,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   }
 
   return (
-    <div className="min-h-screen">
+    <SessionProvider user={user}><div className="min-h-screen">
       <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-6">
         <aside className="w-72 shrink-0">
           <div className="sticky top-6 flex h-[calc(100vh-3rem)] flex-col rounded-3xl border border-white/70 bg-white/70 p-5 shadow-sm shadow-slate-900/10 backdrop-blur overflow-y-auto">
@@ -52,7 +57,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
             </div>
 
             <nav className="mt-6 flex-1 space-y-1">
-              {navItems.map((item) => (
+              {visibleNav.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -98,12 +103,14 @@ export default async function DashboardLayout({ children }: { children: ReactNod
                 </h2>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <SessionMenu />
+                {user.role !== "penjamin_mutu" && <>
                 <Link href="/dashboard/rps/new">
                   <Button variant="secondary">+ Buat RPS</Button>
                 </Link>
                 <Link href="/dashboard/quiz/new">
                   <Button variant="outline">+ Buat Kuis</Button>
-                </Link>
+                </Link></>}
               </div>
             </div>
           </header>
@@ -111,6 +118,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <main className="space-y-6">{children}</main>
         </div>
       </div>
-    </div>
+    </div></SessionProvider>
   );
 }

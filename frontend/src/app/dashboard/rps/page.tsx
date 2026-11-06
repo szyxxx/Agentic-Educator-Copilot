@@ -10,12 +10,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { apiFetch, apiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 async function deleteRPS(formData: FormData) {
   "use server";
   const id = formData.get("id") as string;
-  await fetch(apiUrl(`/api/rps/${id}`), { method: "DELETE" });
+  await apiFetch(`/api/rps/${id}`, { method: "DELETE" });
   revalidatePath("/dashboard/rps");
 }
 

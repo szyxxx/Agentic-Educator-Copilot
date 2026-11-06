@@ -322,14 +322,14 @@ def get_rps_detail(rps_id: str, db: Session = Depends(get_session)):
 def get_quizzes(db: Session = Depends(get_session)):
     quizzes = db.query(Quiz).all()
     active = [quiz for quiz in quizzes if quiz.status == "active"]
-    attention = [quiz for quiz in quizzes if quiz.status == "attention"]
+    attention = [quiz for quiz in quizzes if quiz.status in ("attention", "review")]
     draft = [quiz for quiz in quizzes if quiz.status == "draft"]
     completed = [quiz for quiz in quizzes if quiz.status == "completed"]
 
     return {
         "summary": [
             {"label": "Kuis Aktif", "value": str(len(active)), "note": "Sedang berjalan"},
-            {"label": "Butuh Review", "value": str(len(attention)), "note": "Nilai rendah"},
+            {"label": "Butuh Review", "value": str(len(attention)), "note": "Usulan nilai atau nilai rendah"},
             {"label": "Draft", "value": str(len(draft)), "note": "Siap dipublikasikan"},
             {"label": "Selesai", "value": str(len(completed)), "note": "Kuis ditutup atau selesai dinilai"},
         ],
@@ -354,7 +354,7 @@ def get_quizzes(db: Session = Depends(get_session)):
             {
                 "id": quiz.id,
                 "title": quiz.title,
-                "issue": "Mahasiswa nilai < 60 membutuhkan remedial",
+                "issue": "Usulan nilai menunggu tinjauan dosen" if quiz.status == "review" else "Mahasiswa nilai < 60 membutuhkan remedial",
             }
             for quiz in attention
         ],
@@ -530,7 +530,7 @@ def get_courses(db: Session = Depends(get_session)):
 @router.get("/knowledge-base")
 def get_knowledge_base(db: Session = Depends(get_session)):
     materials = db.query(Material).all()
-    indexed_count = sum(1 for m in materials if m.status == "indexed")
+    indexed_count = sum(1 for m in materials if m.status == "ready" and m.index_status == "indexed")
 
     return {
         "summary": [
@@ -558,7 +558,9 @@ def get_knowledge_base(db: Session = Depends(get_session)):
                 "course_id": material.course_id,
                 "rps_id": material.rps_id,
                 "status": material.status,
-                "status_text": "Belum diverifikasi" if material.status != "indexed" and material.status_text == "Terindeks" else material.status_text,
+                "index_status": material.index_status, "version": material.version,
+                "approved_by": material.approved_by, "generation_model": material.generation_model,
+                "status_text": "Belum diverifikasi" if material.index_status != "indexed" and material.status_text == "Terindeks" else material.status_text,
                 "updated_at": material.updated_at,
                 "size": material.size,
             }

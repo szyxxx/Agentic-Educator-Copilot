@@ -1,5 +1,5 @@
 import { KnowledgeHub } from "./KnowledgeHub";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 export default async function KnowledgeHubPage() {
   const [data, courses] = await Promise.all([

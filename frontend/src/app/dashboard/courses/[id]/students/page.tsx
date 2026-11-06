@@ -1,5 +1,5 @@
 import StudentsView from "./StudentsView";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 type Course = {
   id: string;

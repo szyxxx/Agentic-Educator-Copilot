@@ -16,7 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 export default async function RPSDetail({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;

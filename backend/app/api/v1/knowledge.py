@@ -191,9 +191,9 @@ def knowledge_graph(course_id: Optional[str] = None, db: Session = Depends(get_s
                         "type": mat.material_type,
                         "url": mat.url,
                         "week": mat.week,
-                        "indexed": mat.status == "indexed",
+                        "indexed": mat.status == "ready" and mat.index_status == "indexed",
                         "auto_generated": is_auto,
-                        "status": "Belum diverifikasi" if mat.status != "indexed" and mat.status_text == "Terindeks" else mat.status_text,
+                        "status": mat.status_text,
                         "size": mat.size,
                     },
                 }
@@ -245,6 +245,12 @@ def rag_query(payload: RagQuery, db: Session = Depends(get_session)):
     """Retrieval-augmented search over indexed materials."""
     if not payload.query.strip():
         raise HTTPException(status_code=400, detail="Query tidak boleh kosong.")
+    eligible = db.query(Material).filter(Material.status == "ready")
+    if payload.course_id:
+        eligible = eligible.filter(Material.course_id == payload.course_id)
+    allowed_ids = {m.id for m in eligible.all()}
+    if not allowed_ids:
+        return {"query": payload.query, "results": []}
     try:
         from app.core.rag import retrieve_materials
 
@@ -252,6 +258,7 @@ def rag_query(payload: RagQuery, db: Session = Depends(get_session)):
             payload.query,
             course_id=payload.course_id,
             k=max(1, min(payload.k, 10)),
+            material_ids=sorted(allowed_ids),
         )
     except Exception as e:  # pragma: no cover
         print(f"[knowledge] RAG retrieval failed: {e}")
@@ -260,6 +267,8 @@ def rag_query(payload: RagQuery, db: Session = Depends(get_session)):
     out = []
     for doc in results:
         meta = getattr(doc, "metadata", {}) or {}
+        if meta.get("material_id") not in allowed_ids:
+            continue
         out.append(
             {
                 "snippet": doc.page_content[:600],

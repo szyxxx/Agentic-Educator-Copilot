@@ -97,12 +97,14 @@ def test_endpoint_menggabungkan_mcq_dan_esai(client, llm, kuis_campuran, kiriman
 
     res = client.post(f"/api/grading/run/{kuis_campuran}")
 
-    assert res.json()["data"]["average_score"] == 88.0  # (10 + 10 + 24) / 50
+    assert res.json()["data"]["average_score"] is None
+    assert res.json()["data"]["proposed_average"] == 88.0  # (10 + 10 + 24) / 50
     [sub] = kiriman(kuis_campuran)
-    assert sub["score"] == 88.0
-    assert sub["status"] == "graded"
+    assert sub["score"] is None
+    assert sub["proposed_score"] == 88.0
+    assert sub["status"] == "needs_review"
     assert sub["feedback"].startswith(
-        "Skor total 88.0 dari 100. MCQ benar 2/2. Jawaban esai sudah memadai."
+        "Menunggu tinjauan dosen. Usulan skor 88.0 dari 100. MCQ benar 2/2. Jawaban esai sudah memadai."
     )
 
 
@@ -129,5 +131,6 @@ def test_materi_otomatis_dibuat_setelah_penilaian_jika_ada_rps(
     [materi] = client.get("/api/materials/", params={"rps_id": rps}).json()
     assert materi["id"] == data["auto_material_id"]
     assert materi["type"] == "AUTO"
-    assert materi["status_text"] == "Auto-Generated"
-    assert len(rag_palsu.indexed) == 1
+    assert materi["status_text"] == "Menunggu persetujuan"
+    assert materi["status"] == "pending_review"
+    assert len(rag_palsu.indexed) == 0

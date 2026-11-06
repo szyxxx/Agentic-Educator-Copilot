@@ -42,13 +42,18 @@ def index_material(content: str, metadata: dict):
     
     return len(docs)
 
-def retrieve_materials(query: str, course_id: str = None, k: int = 3):
+def retrieve_materials(query: str, course_id: str = None, k: int = 3, material_ids: list[str] | None = None):
     """
     Retrieves the most relevant chunks for a given query and course.
     """
+    if material_ids is not None and not material_ids:
+        return []
     vectorstore = get_vectorstore()
     filter_dict = {"course_id": course_id} if course_id else None
     
+    if material_ids is not None:
+        allowed = {"material_id": {"$in": material_ids}}
+        filter_dict = {"$and": [filter_dict, allowed]} if filter_dict else allowed
     results = vectorstore.similarity_search(
         query=query,
         k=k,

@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 export default async function DashboardOverview() {
   const data = await apiFetch<any>("/api/dashboard/overview");

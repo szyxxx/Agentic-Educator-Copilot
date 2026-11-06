@@ -27,4 +27,13 @@ class Submission(Base):
     status = Column(
         String(50), default="submitted"
     )  # submitted | graded | unmatched | manual_review
+    proposed_score = Column(Float, nullable=True)
+    question_scores = Column(JSON, nullable=True)
+    grading_snapshot = Column(JSON, nullable=True)
+    grading_model = Column(String(255), nullable=True)
+    grading_version = Column(String(100), nullable=True)
+    version = Column(Integer, default=1, nullable=False)
+    reviewed_by = Column(String(64), nullable=True)
+    reviewed_at = Column(String(40), nullable=True)
+    review_note = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())

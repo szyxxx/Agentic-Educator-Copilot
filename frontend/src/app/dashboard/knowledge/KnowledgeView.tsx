@@ -1,5 +1,6 @@
 "use client";
 
+import { useIdentity } from "@/components/SessionProvider";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -23,6 +24,7 @@ type Material = {
   week: number;
   cpmk: string;
   status: string;
+  index_status: string; version: number; generation_model: string | null; approved_by: string | null;
   status_text: string;
   updated_at: string;
   size: string;
@@ -50,6 +52,9 @@ type Props = {
 
 export function KnowledgeView({ data, courses }: Props) {
   const router = useRouter();
+  const canWrite = useIdentity()?.role !== "penjamin_mutu";
+  const [approving,setApproving] = useState<string|null>(null);
+  const [reviewError,setReviewError] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [viewContent, setViewContent] = useState<MaterialContent | null>(null);
@@ -63,6 +68,13 @@ export function KnowledgeView({ data, courses }: Props) {
     cpmk: "",
     size: "-",
   });
+
+  const approveMaterial = async (material: Material) => {
+    setApproving(material.id); setReviewError("");
+    try { await apiFetch(`/api/materials/${material.id}/approve`, {method:"POST",json:{version:material.version}}); setViewContent(null); router.refresh(); }
+    catch(e) {setReviewError((e as Error).message);}
+    finally {setApproving(null);}
+  };
 
   const handleAdd = async () => {
     if (!draft.course_id || !draft.title.trim()) {
@@ -113,11 +125,12 @@ export function KnowledgeView({ data, courses }: Props) {
 
   return (
     <div className="space-y-6">
+      {reviewError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{reviewError}</p>}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <p className="text-sm text-slate-500">
-          Silabus, jurnal, dan tautan yang dipakai AI sebagai konteks saat membuat RPS atau kuis. Materi dengan ekstraksi teks akan otomatis terindeks ke RAG.
+          Silabus, jurnal, dan tautan yang dipakai AI sebagai konteks saat membuat RPS atau kuis. Materi otomatis menunggu persetujuan manusia sebelum dipakai. Status indeks ditampilkan terpisah dari persetujuan.
         </p>
-        <Button onClick={() => setShowAdd(true)}>+ Tambah Materi</Button>
+        <Button disabled={!canWrite} onClick={() => setShowAdd(true)}>+ Tambah Materi</Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -151,7 +164,7 @@ export function KnowledgeView({ data, courses }: Props) {
                   <CardDescription>{material.topic}</CardDescription>
                 </div>
                 <Badge
-                  variant={material.status === "indexed" ? "success" : "warning"}
+                  variant={material.status === "ready" && material.index_status === "indexed" ? "success" : "warning"}
                 >
                   {material.status_text}
                 </Badge>
@@ -167,19 +180,23 @@ export function KnowledgeView({ data, courses }: Props) {
                 <span className="h-1 w-1 rounded-full bg-slate-300" />
                 <span>Ukuran: {material.size}</span>
               </div>
+              <p className="text-xs text-slate-500">Indeks: {material.index_status} · Model: {material.generation_model??"—"}</p>
+              {material.status === "pending_review" && <p className="text-sm text-amber-800">Perlu persetujuan. Baca isi melalui tombol Lihat sebelum menyetujui.</p>}
               <div className="flex flex-wrap gap-2">
+
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => handleView(material)}
                   disabled={viewLoading}
                 >
-                  {viewLoading ? "Memuat..." : "👁 Lihat"}
+                  {viewLoading ? "Memuat..." : material.status === "pending_review" ? "Tinjau materi" : "👁 Lihat"}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   className="text-rose-600"
+                  disabled={!canWrite}
                   onClick={() => handleDelete(material.id, material.title)}
                 >
                   Hapus
@@ -336,6 +353,7 @@ export function KnowledgeView({ data, courses }: Props) {
               )}
             </div>
 
+            {reviewError && <p role="alert" className="px-6 text-sm text-rose-700">{reviewError}</p>}
             {/* Footer */}
             <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between">
               <span className="text-xs text-slate-400">
@@ -343,6 +361,7 @@ export function KnowledgeView({ data, courses }: Props) {
                   ? `${viewContent.content_text.length.toLocaleString()} karakter diekstrak`
                   : "Tidak ada teks terekstrak"}
               </span>
+              {data.materials.find(m => m.id === viewContent.id)?.status === "pending_review" && <Button size="sm" disabled={approving===viewContent.id} onClick={()=>approveMaterial(data.materials.find(m=>m.id===viewContent.id)!)}>Setujui materi yang dibaca</Button>}
               <Button variant="outline" size="sm" onClick={() => setViewContent(null)}>
                 Tutup
               </Button>

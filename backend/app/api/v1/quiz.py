@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from uuid import uuid4
+from uuid import uuid4, uuid5, NAMESPACE_URL
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import csv
@@ -399,6 +399,13 @@ def list_submissions(quiz_id: str, db: Session = Depends(get_session)):
             "status": s.status,
             "score": s.score,
             "feedback": s.feedback,
+            "proposed_score": s.proposed_score,
+            "question_scores": s.question_scores or [],
+            "grading_model": s.grading_model,
+            "version": s.version,
+            "reviewed_by": s.reviewed_by,
+            "reviewed_at": s.reviewed_at,
+            "review_note": s.review_note,
         }
         for s in rows
     ]
@@ -453,12 +460,11 @@ async def upload_submissions_csv(
     )
     enrolled_by_nim = {s.nim: s for s in enrolled}
 
-    existing_nims = {
-        s.nim
-        for s in db.query(Submission.nim)
-        .filter(Submission.quiz_id == quiz_id)
-        .all()
-    }
+    existing_rows = {s.nim: s for s in db.query(Submission).filter(Submission.quiz_id == quiz_id).all()}
+    existing_nims = set(existing_rows)
+    id_col = next((i for i, col in enumerate(header) if re.fullmatch(r"(?:submission[ _-]?id|id[ _-]?(?:submission|kiriman))", col, re.I)), None)
+    seen_ids = {s.id for s in existing_rows.values()}
+    receipts = []
 
     added = 0
     matched = 0
@@ -470,9 +476,9 @@ async def upload_submissions_csv(
         if not nim:
             skipped.append({"row": line_no, "reason": "NIM kosong"})
             continue
-        if nim in existing_nims:
-            skipped.append({"row": line_no, "reason": f"NIM {nim} sudah punya submission"})
-            continue
+        provided_id = row[id_col].strip() if id_col is not None and id_col < len(row) else ""
+        if provided_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", provided_id):
+            raise HTTPException(status_code=400, detail="Submission ID tidak valid.")
 
         # Build the answers dict from the column mapping
         answers: dict[str, Any] = {}
@@ -490,6 +496,17 @@ async def upload_submissions_csv(
                 if text:
                     answers[q["id"]] = text
 
+        if nim in existing_nims:
+            old = existing_rows[nim]
+            if provided_id and (old.id != provided_id or old.answers != answers):
+                raise HTTPException(status_code=409, detail="Replay bertentangan dengan ID/isi tersimpan; nilai final tidak ditimpa.")
+            skipped.append({"row": line_no, "reason": f"NIM {nim} sudah punya submission"})
+            receipts.append({"id": old.id, "nim": nim})
+            continue
+        submission_id = provided_id or f"sub-{uuid5(NAMESPACE_URL, f'educopilot/submission/{quiz_id}/{nim}').hex}"
+        collision = db.execute(Submission.__table__.select().with_only_columns(Submission.__table__.c.id).where(Submission.__table__.c.id == submission_id)).first()
+        if submission_id in seen_ids or collision:
+            raise HTTPException(status_code=409, detail="Submission ID sudah digunakan; replay ditolak.")
         student = enrolled_by_nim.get(nim)
         if student:
             display_name = student.name
@@ -503,9 +520,8 @@ async def upload_submissions_csv(
             status = "unmatched"
             unmatched.append({"row": line_no, "nim": nim})
 
-        db.add(
-            Submission(
-                id=f"sub-{uuid4().hex[:10]}",
+        submission = Submission(
+                id=submission_id,
                 quiz_id=quiz_id,
                 student_id=student_id,
                 nim=nim,
@@ -514,7 +530,10 @@ async def upload_submissions_csv(
                 answered_count=len(answers),
                 status=status,
             )
-        )
+        db.add(submission)
+        existing_rows[nim] = submission
+        seen_ids.add(submission_id)
+        receipts.append({"id": submission_id, "nim": nim})
         existing_nims.add(nim)
         added += 1
 
@@ -537,6 +556,7 @@ async def upload_submissions_csv(
         "skipped": skipped,
         "missing_questions": missing,
         "total_submissions": total_subs,
+        "receipts": receipts,
     }
 
 
@@ -573,3 +593,19 @@ def delete_submission(
             )
     db.commit()
     return {"status": "success"}
+
+
+@router.get("/{quiz_id}/replay.csv")
+def export_replay(quiz_id: str, db: Session = Depends(get_session)):
+    """Export answers with immutable IDs, suitable for replay after a snapshot restore."""
+    quiz=db.query(Quiz).filter(Quiz.id==quiz_id).first()
+    if not quiz:raise HTTPException(status_code=404,detail="Quiz not found")
+    questions=quiz.questions or [];headers=['Submission ID','NIM Mahasiswa','Nama Mahasiswa']
+    mcq=essay=0
+    for q in questions:
+        if q.get('type')=='essay':essay+=1;headers.append(f'ESSAY-{essay}')
+        else:mcq+=1;headers.append(f'PG-{mcq}')
+    output=io.StringIO();writer=csv.writer(output);writer.writerow(headers)
+    for sub in db.query(Submission).filter(Submission.quiz_id==quiz_id).order_by(Submission.nim).all():
+        writer.writerow([sub.id,sub.nim,sub.name]+[(sub.answers or {}).get(q['id'],'') for q in questions])
+    return StreamingResponse(iter([output.getvalue()]),media_type='text/csv',headers={'Content-Disposition':f'attachment; filename="replay_{quiz_id}.csv"'})

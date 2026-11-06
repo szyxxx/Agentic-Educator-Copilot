@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { apiFetch, API_BASE } from "@/lib/api";
+import { apiFetch } from "@/lib/api-server";
 
 export default async function Analytics({
   searchParams,
@@ -39,7 +39,7 @@ export default async function Analytics({
             {data.course_overview.course} • {data.course_overview.semester}
           </p>
         </div>
-        <a href={`${API_BASE}/api/dashboard/analytics/export${qs}`} target="_blank" rel="noreferrer">
+        <a href={`/api/backend/api/dashboard/analytics/export${qs}`} target="_blank" rel="noreferrer">
           <Button variant="secondary">Ekspor Laporan</Button>
         </a>
       </div>

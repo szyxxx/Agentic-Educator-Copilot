@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { apiFetch, apiUrl } from "@/lib/api";
 
 type Material = {
+  status: string;
   id: string;
   title: string;
   type: string;
@@ -65,7 +66,7 @@ export default function WeekMaterials({
       setItems(attached);
       const attachedIds = new Set(attached.map((m) => m.id));
       // Anything in the same course that isn't already on this week is fair game
-      setAvailable(courseWide.filter((m) => !attachedIds.has(m.id)));
+      setAvailable(courseWide.filter((m) => m.status === "ready" && !attachedIds.has(m.id)));
     } finally {
       setLoading(false);
     }

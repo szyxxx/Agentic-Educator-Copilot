@@ -19,3 +19,5 @@ __all__ = [
     "Student",
     "Submission",
 ]
+from app.models.security import User, CourseAccess, AuthSession, LoginAttempt
+from app.models.audit import AuditEvent, ObjectRevision

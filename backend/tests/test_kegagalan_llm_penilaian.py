@@ -58,7 +58,7 @@ def test_esai_gagal_berstatus_manual_dengan_mcq_tetap_tercatat(client, llm, kuis
     assert "MCQ benar 2/2" in sub["feedback"]
     assert CATATAN_GAGAL in sub["feedback"]
     assert "perlu diperdalam" not in sub["feedback"]
-    assert client.get(f"/api/quiz/{kuis_campuran}").json()["status"] == "active"
+    assert client.get(f"/api/quiz/{kuis_campuran}").json()["status"] == "review"
     analytics = client.get("/api/dashboard/analytics?course_id=c1").json()
     assert analytics["per_student"] == []
 
@@ -118,6 +118,9 @@ def test_esai_gagal_bisa_dinilai_ulang_setelah_llm_pulih(
     client.post(f"/api/grading/run/{kuis_campuran}")
     llm.reply(json.dumps([{"id": "Q003", "score": 30}]))
     client.post(f"/api/grading/run/{kuis_campuran}")
+    sub = kiriman(kuis_campuran)[0]
+    assert sub["score"] is None and sub["proposed_score"] == 100.0
+    assert client.post(f"/api/grading/submissions/{sub['id']}/approve", json={"version":sub["version"]}).status_code == 200
     assert kiriman(kuis_campuran)[0]["score"] == 100.0
 
 
@@ -141,17 +144,25 @@ def test_batch_parsial_menandai_gagal_dan_retry_tidak_menimpa_nilai_lama(client,
     llm.reply(lambda prompt: "[]" if "JAWABAN_GAGAL" in prompt else '[{"id":"Q003","score":30,"feedback":"Tepat."}]')
     body = client.post(f"/api/grading/run/{kuis_campuran}").json()
     assert body["status"] == "partial"
-    assert body["data"]["failed_count"] == body["data"]["graded_count"] == 1
+    assert body["data"]["failed_count"] == body["data"]["proposed_count"] == 1
+    assert body["data"]["graded_count"] == 0
     first, second = kiriman(kuis_campuran)
-    assert first["score"] == 100
+    assert first["score"] is None and first["proposed_score"] == 100
+    assert client.post(f"/api/grading/submissions/{first['id']}/approve",json={"version":first["version"]}).status_code == 200
     assert second["score"] is None
     assert client.get(f"/api/quiz/{kuis_campuran}").json()["progress_percent"] == 67
     llm.reply('[{"id":"Q003","score":15,"feedback":"Cukup."}]')
     body = client.post(f"/api/grading/run/{kuis_campuran}").json()
-    assert body["status"] == "success"
-    assert body["data"]["graded_count"] == 1
+    assert body["status"] == "needs_review"
+    assert body["data"]["proposed_count"] == 1
+    assert [s["score"] for s in kiriman(kuis_campuran)] == [100, None]
+    second = kiriman(kuis_campuran)[1]
+    assert second["proposed_score"] == 70
+    approved = client.post(f"/api/grading/submissions/{second['id']}/approve",json={"version":second["version"]})
+    assert approved.status_code == 200
     assert [s["score"] for s in kiriman(kuis_campuran)] == [100, 70]
-    assert body["data"]["average_score"] == 85
+    assert body["data"]["average_score"] == 100
+    assert approved.json()["score"] == 70
     assert client.get(f"/api/quiz/{kuis_campuran}").json()["status"] == "completed"
 
 

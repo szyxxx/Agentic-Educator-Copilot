@@ -20,7 +20,7 @@ from typing import Annotated, List, TypedDict
 
 from langgraph.graph import END, StateGraph
 
-from app.core.llm import get_llm
+from app.core.llm import get_llm, describe_model
 from app.core import config
 from app.core.llm_json import invoke_json
 from app.core.llm_schemas import SCORES
@@ -35,6 +35,7 @@ class GradingState(TypedDict):
     student_answers: dict
     mcq_scores: List[dict]
     essay_scores: List[dict]
+    grading_model: str
     total_score: float | None
     feedback_per_question: List[dict]
     overall_feedback: str
@@ -112,8 +113,10 @@ def grade_essay_node(state: GradingState):
     {json.dumps(items_for_llm, ensure_ascii=False)}
     """
 
+    model_name = "unavailable"
     try:
         llm = get_llm("complex")
+        model_name = describe_model(llm)
         def validate_scores(items):
             expected = {q["id"]: float(q.get("max_score") or 30) for q in essays}
             if len(items) != len(expected) or {item["id"] for item in items} != set(expected):
@@ -157,7 +160,7 @@ def grade_essay_node(state: GradingState):
                 "max_score": max_score,
             }
         )
-    return {"essay_scores": out}
+    return {"essay_scores": out, "grading_model": model_name}
 
 
 def aggregate_node(state: GradingState):

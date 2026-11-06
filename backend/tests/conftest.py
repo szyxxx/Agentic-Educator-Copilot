@@ -35,6 +35,9 @@ _TEST_DB = _TMP_DIR / "tes.db"
 
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB}"
 os.environ["ENVIRONMENT"] = "test"
+os.environ["AUTH_COOKIE_SECURE"] = "false"
+os.environ["EDUCOPILOT_ADMIN_USERNAME"] = ""
+os.environ["EDUCOPILOT_ADMIN_PASSWORD"] = ""
 os.environ["CHROMA_PERSIST_DIR"] = str(_TMP_DIR / "chroma")
 os.environ["OPENROUTER_API_KEY"] = ""
 os.environ["ANTHROPIC_API_KEY"] = ""
@@ -101,7 +104,11 @@ def db_baru():
     """Mulai dari file DB kosong di alamat `DATABASE_URL`, lalu buat skema + seed."""
     database.engine.dispose()
     _TEST_DB.unlink(missing_ok=True)
-    database.init_db()
+    database.init_db(allow_create=True, seed_demo=True)
+    from app.models.security import User
+    with database.SessionLocal() as setup:
+        setup.add(User(id="unit-admin", username="unitadmin", password_hash=TEST_HASH, role="admin", active=True, created_at="2026-11-07"))
+        setup.commit()
     yield
     database.engine.dispose()
 
@@ -181,7 +188,7 @@ def rag_palsu(monkeypatch) -> SimpleNamespace:
         state.indexed.append((content, metadata))
         return state.chunks
 
-    def retrieve_materials(query, course_id=None, k=3):
+    def retrieve_materials(query, course_id=None, k=3, material_ids=None):
         if state.error:
             raise state.error
         return []
@@ -191,10 +198,22 @@ def rag_palsu(monkeypatch) -> SimpleNamespace:
     return state
 
 
+from app.core.auth import PASSWORDS
+TEST_PASSWORD = "Unit-test-password-012345"
+TEST_HASH = PASSWORDS.hash(TEST_PASSWORD)
+
+
 @pytest.fixture
-def client(db_baru):
-    with TestClient(app) as c:
+def anonymous_client(db_baru):
+    with TestClient(app, headers={"Origin": "http://localhost:3000"}) as c:
         yield c
+
+
+@pytest.fixture
+def client(anonymous_client):
+    result = anonymous_client.post("/api/auth/login", json={"username":"unitadmin", "password":TEST_PASSWORD})
+    assert result.status_code == 200, result.text
+    return anonymous_client
 
 
 @pytest.fixture
