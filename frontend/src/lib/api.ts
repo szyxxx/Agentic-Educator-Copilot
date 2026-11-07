@@ -1,3 +1,4 @@
+import { navigateToFreshSession } from "@/lib/session-navigation";
 import { readResponse } from "./api-common";
 // Same-origin BFF keeps HttpOnly sessions available to uploads and downloads.
 export const API_BASE = "/api/backend";
@@ -12,6 +13,6 @@ export async function apiFetch<T = any>(path: string, init?: RequestInit & { jso
   let res: Response;
   try { res = await fetch(apiUrl(path), { cache: "no-store", ...init, headers, body, credentials: "same-origin" }); }
   catch { throw new Error("Layanan backend tidak dapat dihubungi. Coba lagi setelah beberapa saat."); }
-  if (res.status === 401 && typeof window !== "undefined" && !path.endsWith("/login")) window.location.assign("/login");
+  if (res.status === 401 && typeof window !== "undefined" && !path.endsWith("/login")) navigateToFreshSession("/login");
   return readResponse<T>(res);
 }

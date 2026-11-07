@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,11 @@ const SAMPLE_CSV = `nim,nama,email
 00000103,Citra Dewi,
 `;
 
-export default function StudentsView({ courseId, course }: Props) {
+export default function StudentsView(props: Props) {
+  return <StudentsForCourse key={props.courseId} {...props} />;
+}
+
+function StudentsForCourse({ courseId, course }: Props) {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
@@ -53,12 +57,13 @@ export default function StudentsView({ courseId, course }: Props) {
   } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const fetchStudents = useCallback((signal?: AbortSignal) =>
+    apiFetch<Student[]>(`/api/students/?course_id=${courseId}`, { signal }), [courseId]);
+
   const load = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<Student[]>(
-        `/api/students/?course_id=${courseId}`
-      );
+      const data = await fetchStudents();
       setStudents(data);
     } finally {
       setLoading(false);
@@ -66,9 +71,13 @@ export default function StudentsView({ courseId, course }: Props) {
   };
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
+    const controller = new AbortController();
+    fetchStudents(controller.signal)
+      .then(data => { if (!controller.signal.aborted) setStudents(data); })
+      .catch(error => { if (!controller.signal.aborted) alert(error.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [fetchStudents]);
 
   const handleAdd = async () => {
     if (!draft.nim.trim() || !draft.name.trim()) {

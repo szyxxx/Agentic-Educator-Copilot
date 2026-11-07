@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,11 @@ type Props = {
  * AI quiz reference, plus a quick upload button that round-trips through
  * the same Knowledge Hub.
  */
-export function KnowledgeMaterialPicker({ courseId, onUseMaterial }: Props) {
+export function KnowledgeMaterialPicker(props: Props) {
+  return <MaterialsForCourse key={props.courseId} {...props} />;
+}
+
+function MaterialsForCourse({ courseId, onUseMaterial }: Props) {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(true);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -36,30 +40,33 @@ export function KnowledgeMaterialPicker({ courseId, onUseMaterial }: Props) {
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const fetchMaterials = useCallback((signal?: AbortSignal) => {
+    const qs = courseId ? `?course_id=${courseId}` : "";
+    return apiFetch<Material[]>(`/api/materials/${qs}`, { signal });
+  }, [courseId]);
+
+  const applyMaterials = useCallback((data: Material[]) => {
+    const ready = data.filter(m => m.status === "ready");
+    setMaterials(ready);
+    const valid = new Set(ready.map(m => m.id));
+    setPicked(previous => new Set([...previous].filter(id => valid.has(id))));
+  }, []);
+
   const load = async () => {
     setLoading(true);
-    try {
-      const qs = courseId ? `?course_id=${courseId}` : "";
-      const data = await apiFetch<Material[]>(`/api/materials/${qs}`);
-      setMaterials(data.filter(m => m.status === "ready"));
-      // Drop previously picked items that no longer match the course
-      setPicked((prev) => {
-        const valid = new Set(data.map((m) => m.id));
-        const next = new Set<string>();
-        prev.forEach((id) => valid.has(id) && next.add(id));
-        return next;
-      });
-    } catch (e) {
-      console.error("Failed to load materials", e);
-    } finally {
-      setLoading(false);
-    }
+    try { applyMaterials(await fetchMaterials()); }
+    catch (error) { console.error("Failed to load materials", error); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
+    const controller = new AbortController();
+    fetchMaterials(controller.signal)
+      .then(data => { if (!controller.signal.aborted) applyMaterials(data); })
+      .catch(error => { if (!controller.signal.aborted) console.error("Failed to load materials", error); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [fetchMaterials, applyMaterials]);
 
   const toggle = (id: string) => {
     setPicked((prev) => {

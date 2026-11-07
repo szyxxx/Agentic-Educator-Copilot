@@ -225,7 +225,7 @@ export default async function RPSDetail({ params }: { params: Promise<{ id: stri
         <CardHeader>
           <CardTitle>Daftar Referensi (Bernomor)</CardTitle>
           <CardDescription>
-            Nomor di kolom "No. Referensi" merujuk ke daftar di sini.
+            Nomor di kolom &quot;No. Referensi&quot; merujuk ke daftar di sini.
           </CardDescription>
         </CardHeader>
         <CardContent>

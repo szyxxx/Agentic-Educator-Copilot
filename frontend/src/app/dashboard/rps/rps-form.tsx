@@ -154,7 +154,6 @@ export default function RpsForm({ mode, rpsId, initialData, courseLabel }: Props
 
   useEffect(() => {
     if (!aiBusy) return;
-    setAiStep(0);
     const t = setInterval(() => {
       setAiStep((p) => Math.min(p + 1, loadingSteps.length - 1));
     }, 5000);
@@ -184,6 +183,7 @@ export default function RpsForm({ mode, rpsId, initialData, courseLabel }: Props
 
   const handleAiGenerate = async () => {
     setAiOpen(false);
+    setAiStep(0);
     setAiBusy(true);
     try {
       const fd = new FormData();
@@ -436,7 +436,7 @@ export default function RpsForm({ mode, rpsId, initialData, courseLabel }: Props
             <CardTitle>Referensi & Pustaka</CardTitle>
             <CardDescription>
               Tambahkan buku, jurnal, dan tautan yang dipakai sebagai sumber utama.
-              Penomoran 1, 2, 3, ... otomatis dipakai oleh kolom "No. Referensi" di setiap pertemuan.
+              Penomoran 1, 2, 3, ... otomatis dipakai oleh kolom &quot;No. Referensi&quot; di setiap pertemuan.
             </CardDescription>
           </CardHeader>
           <CardContent>

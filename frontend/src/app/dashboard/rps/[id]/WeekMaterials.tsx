@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -38,12 +38,11 @@ type Props = {
  *   3. Detaching (delete = remove the material from this week, but it stays
  *      in the Knowledge Hub list when detached vs. fully deleted).
  */
-export default function WeekMaterials({
-  rpsId,
-  courseId,
-  weekNumber,
-  cpmk,
-}: Props) {
+export default function WeekMaterials(props: Props) {
+  return <MaterialsForWeek key={`${props.rpsId}:${props.courseId}:${props.weekNumber}`} {...props} />;
+}
+
+function MaterialsForWeek({ rpsId, courseId, weekNumber, cpmk }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Material[]>([]);
@@ -52,30 +51,31 @@ export default function WeekMaterials({
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const fetchMaterials = useCallback((signal?: AbortSignal) => Promise.all([
+    apiFetch<Material[]>(`/api/materials/?rps_id=${rpsId}&week=${weekNumber}`, { signal }),
+    courseId ? apiFetch<Material[]>(`/api/materials/?course_id=${courseId}`, { signal }) : Promise.resolve([] as Material[]),
+  ]), [rpsId, courseId, weekNumber]);
+
+  const applyMaterials = useCallback(([attached, courseWide]: [Material[], Material[]]) => {
+    setItems(attached);
+    const attachedIds = new Set(attached.map(m => m.id));
+    setAvailable(courseWide.filter(m => m.status === "ready" && !attachedIds.has(m.id)));
+  }, []);
+
   const load = async () => {
     setLoading(true);
-    try {
-      const [attached, courseWide] = await Promise.all([
-        apiFetch<Material[]>(
-          `/api/materials/?rps_id=${rpsId}&week=${weekNumber}`
-        ),
-        courseId
-          ? apiFetch<Material[]>(`/api/materials/?course_id=${courseId}`)
-          : Promise.resolve([] as Material[]),
-      ]);
-      setItems(attached);
-      const attachedIds = new Set(attached.map((m) => m.id));
-      // Anything in the same course that isn't already on this week is fair game
-      setAvailable(courseWide.filter((m) => m.status === "ready" && !attachedIds.has(m.id)));
-    } finally {
-      setLoading(false);
-    }
+    try { applyMaterials(await fetchMaterials()); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rpsId, weekNumber, courseId]);
+    const controller = new AbortController();
+    fetchMaterials(controller.signal)
+      .then(data => { if (!controller.signal.aborted) applyMaterials(data); })
+      .catch(error => { if (!controller.signal.aborted) alert(`Gagal memuat materi: ${error.message}`); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [fetchMaterials, applyMaterials]);
 
   const handleUpload = async (file: File) => {
     setBusy(true);

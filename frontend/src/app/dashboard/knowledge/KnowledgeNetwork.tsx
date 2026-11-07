@@ -103,14 +103,15 @@ export function KnowledgeNetwork() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
+    const controller = new AbortController();
     const qs = courseId ? `?course_id=${courseId}` : "";
     apiFetch<{ nodes: GraphNode[]; edges: GraphEdge[] }>(
-      `/api/knowledge/graph${qs}`
+      `/api/knowledge/graph${qs}`, { signal: controller.signal }
     )
-      .then(setGraph)
-      .catch((e) => alert(`Gagal memuat graph: ${e.message}`))
-      .finally(() => setLoading(false));
+      .then(data => { if (!controller.signal.aborted) setGraph(data); })
+      .catch(e => { if (!controller.signal.aborted) alert(`Gagal memuat graph: ${e.message}`); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [courseId]);
 
   const filteredNodes = useMemo(
@@ -153,7 +154,7 @@ export function KnowledgeNetwork() {
           </label>
           <select
             value={courseId}
-            onChange={(e) => setCourseId(e.target.value)}
+            onChange={(e) => { setLoading(true); setCourseId(e.target.value); }}
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
           >
             <option value="">Semua Mata Kuliah</option>

@@ -61,7 +61,7 @@ export default async function RPSManagement() {
         {data.items.length === 0 && (
           <Card>
             <CardContent className="p-8 text-center text-slate-500">
-              Belum ada RPS. Klik "Buat RPS Baru" untuk membuat secara manual atau dengan AI.
+              Belum ada RPS. Klik &quot;Buat RPS Baru&quot; untuk membuat secara manual atau dengan AI.
             </CardContent>
           </Card>
         )}

@@ -2,7 +2,6 @@
 
 import { useIdentity } from "@/components/SessionProvider";
 import { useEffect, useState, use } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
@@ -22,10 +21,12 @@ export default function QuizDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const router = useRouter();
-  const canWrite=useIdentity()?.role !== "penjamin_mutu";
-  const resolved = use(params);
-  const quizId = resolved.id;
+  const { id } = use(params);
+  return <QuizDetail key={id} quizId={id} />;
+}
+
+function QuizDetail({ quizId }: { quizId: string }) {
+  const canWrite = useIdentity()?.role !== "penjamin_mutu";
 
   const [quiz, setQuiz] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -49,9 +50,17 @@ export default function QuizDetailPage({
   };
 
   useEffect(() => {
-    loadQuiz();
-    loadSubmissions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const controller = new AbortController();
+    const showError = (error: Error) => {
+      if (!controller.signal.aborted) setServiceError(error.message);
+    };
+    apiFetch<any>(`/api/quiz/${quizId}`, { signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) setQuiz(data); })
+      .catch(showError);
+    apiFetch<Submission[]>(`/api/quiz/${quizId}/submissions`, { signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) setSubmissions(data); })
+      .catch(showError);
+    return () => controller.abort();
   }, [quizId]);
 
   const publish = async () => {
@@ -105,7 +114,6 @@ export default function QuizDetailPage({
   // Use live gradingResult (from just-run grading) or fall back to derived data
   const showGradingPanel = !!gradingResult || hasGradedData;
 
-  const isGradable = quiz.status === "active" || quiz.status === "completed" || quiz.status === "attention" || quiz.status === "review";
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">

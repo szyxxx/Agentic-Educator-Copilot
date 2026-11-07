@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,10 @@ const SEVERITY_BADGE: Record<Finding["severity"], "danger" | "warning" | "outlin
 };
 
 export default function FindingsPanel({ rpsId }: { rpsId: string }) {
+  return <FindingsForRps key={rpsId} rpsId={rpsId} />;
+}
+
+function FindingsForRps({ rpsId }: { rpsId: string }) {
   const router = useRouter();
   const [data, setData] = useState<FindingsResponse | null>(null);
   const [showDismissed, setShowDismissed] = useState(false);
@@ -76,11 +80,12 @@ export default function FindingsPanel({ rpsId }: { rpsId: string }) {
   const [error, setError] = useState<string>("");
   const [busyId, setBusyId] = useState<string>("");
 
+  const fetchFindings = useCallback((includeDismissed: boolean, signal?: AbortSignal) =>
+    apiFetch<FindingsResponse>(`/api/rps/${rpsId}/findings?include_dismissed=${includeDismissed}`, { signal }), [rpsId]);
+
   const load = async (includeDismissed: boolean = showDismissed) => {
     try {
-      const res = await apiFetch<FindingsResponse>(
-        `/api/rps/${rpsId}/findings?include_dismissed=${includeDismissed}`
-      );
+      const res = await fetchFindings(includeDismissed);
       setData(res);
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -88,9 +93,12 @@ export default function FindingsPanel({ rpsId }: { rpsId: string }) {
   };
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rpsId]);
+    const controller = new AbortController();
+    fetchFindings(false, controller.signal)
+      .then(data => { if (!controller.signal.aborted) setData(data); })
+      .catch(error => { if (!controller.signal.aborted) setError(String(error.message ?? error)); });
+    return () => controller.abort();
+  }, [fetchFindings]);
 
   const runReview = async () => {
     setRunning(true);
@@ -255,7 +263,7 @@ export default function FindingsPanel({ rpsId }: { rpsId: string }) {
                   {new Date(lastReviewed).toLocaleString("id-ID")}.{" "}
                 </>
               )}
-              Klik "Terapkan Saran" untuk menambal field yang ditunjuk; klik "Tutup" untuk mengabaikan.
+              Klik &quot;Terapkan Saran&quot; untuk menambal field yang ditunjuk; klik &quot;Tutup&quot; untuk mengabaikan.
             </CardDescription>
           </div>
           <div className="flex flex-col items-end gap-2">
